@@ -1,0 +1,3026 @@
+﻿Imports System.Data
+Imports System.Data.OleDb
+Imports System.Data.SqlClient
+Imports System.Windows.Forms
+Imports System.ComponentModel.PropertyDescriptorCollection
+Imports Word = Microsoft.Office.Interop.Word
+Imports Microsoft.VisualBasic
+Imports System.IO
+
+
+Module modReassaySamples
+
+
+    Public arrTPLabel(2, 1)
+    Public intTPLabel As Short
+    Public arrTP(2, 1)
+
+    Sub SRSummaryReassaySamplesNew_6(ByVal wd As Microsoft.Office.Interop.Word.Application, ByVal idTR As Int64)
+
+
+        'SAMPLERESULTSCONFLICT	Contains accepted reassay samples, original results by run id and seq number.
+        'SAMPRESCONFLICTCHOICES	Contains the reassay samples with mean or median choices for the Reassay. 
+        'SAMPRESCONFLICTDEC	Contains the concentration decision choices for the Reassay Selection function. of Watson.
+
+        '20180722 LEE:
+        'Reports by LI-00016 and LI-00017 of incorrect Reassay Samples tables show that the single-query approach of Sub SRSummaryReassaySamples 
+        'results in incorrect assignments of Original and Reported concentrations.
+        '
+        'Upon inspection against existing data supplied by different clients, Sub SRSummaryReassaySamples was successful most of the time, but failed when studies 
+        'became 'complicated.’ E.g. Multiple matrices and/or Multiple concentration levels. But even one non-complicated study showed incorrect results.
+        '
+        'There are three tables used by Watson to record Reassay sample information:  SAMPLERESULTSCONFLICT, SAMPRESCONFLICTCHOICES, and SAMPRESCONFLICTDEC. 
+        'What has been found is that these tables aren’t always complete or current. For example, sometimes the Original sample of one or more Reassayed samples is totally missing.
+        '
+        'The tables are always complete with respect to Reassayed samples, so the Reassay table approach was modified to be three separate steps:
+        '
+        '1.      Using a query called tblrs3, determine the Original sample and values (Run ID, Concentration) associated with a set of Reassayed samples
+        '2.      Using two queries called tblrs1 and tblrs3, determine the Reported sample and values (Concentration)
+        '3.      Using a query called tblReassayReportNew, determine the Reassayed sample(s) and values (Run ID, Concentration) and Reason for Reassay and Reason for Reported Conc.
+        '
+        'This approach is coded in Sub SRSummaryReassaySamplesNew. This code was tested against studies with known results from four different clients with ‘complicated’ 
+        'studies that showed incorrect results with Sub SRSummaryReassaySamples. The clients were LI00016, LI-00017, LI-00027, LI-00028 and LI-00031. The tables all showed correct results, except for some instances where it is known that the user manually changed some Reassay Reason values.
+        '
+        'The generated tables and the expected results documents provided by clients are stored in the testing folder 
+        'D:\GoogleDrives\LabIntegrity\GoogleDrive\LabIntegrity\SoftwareApps\StudyDoc\Administration\TestingResults\2018\SD-520.
+        '
+
+
+        Dim boolPlaceHolderTemp As Boolean = False
+        Dim boolDoPlaceHolderTemp As Boolean = False
+
+        Dim intR As Int32
+
+        Dim numNomConc As Decimal
+        Dim str1 As String
+        Dim str2 As String
+        Dim str3 As String
+        Dim str4 As String
+        Dim str5 As String
+        Dim str6 As String
+        Dim strSQL As String
+        Dim Count1A As Int16
+        Dim Count2A As Int16
+        Dim Count2 As Short
+        Dim Count3 As Short
+        Dim Count4 As Short
+        Dim Count5 As Short
+        Dim Count6 As Short
+        Dim varE
+
+        Dim strA As String
+        Dim strB As String
+        Dim intLeg As Int16
+        Dim ctLegend1 As Int16
+
+        Dim numDF As Decimal
+
+        Dim boolV As Boolean
+
+
+        'The following from original Excel code
+
+        ''****Start Re-assay Samples
+        'Dim arrReassayRows(100)
+        'Dim arrReassay(9, 100)
+        'Dim arrReasons(100)
+        'Dim arrReasonsC(100)
+        '1=ANALYTEID, 2=DESIGNSUBJECTTAG, 3=SUBJECTGROUPNAME, 4=ENDDAY, 5=ENDHOUR, 6=RUNID, 7=DESIGNSAMPLEID
+        Dim ctReassay, ctReassayRows, ctReasons, ctRepeatRows, ctLegend, ctRPool, ctRepeatTableRows As Int32
+        Dim ctReasonsC As Short
+        Dim boolStop As Boolean
+        Dim bool As Boolean
+        Dim intDo As Short
+        Dim dvDo As System.Data.DataView
+        Dim strTName As String
+        Dim tbl1 As System.Data.DataTable
+        Dim strF As String
+        Dim int1 As Short
+        Dim int2 As Short
+        Dim int3 As Short
+        Dim int4 As Short
+        Dim ctCols As Short
+        Dim arrOrder(6, 100)
+        Dim tbl As System.Data.DataTable
+        Dim dr() As DataRow
+        Dim dr1() As DataRow
+        Dim dr2() As DataRow
+        Dim dr3() As DataRow
+        Dim var1, var2, var3, var4, var5, var6, var7, var8, var9, var10, var11, var12, var13, var14, var15, var16, var17
+        Dim var18, var19, var20, var21, var22, var23, var24, var25, var26, var27, var28, var29, var30
+        Dim var1a, var2a, var3a, var4a, var5a, var6a
+        Dim lng1 As Int64
+        Dim lng2 As Int64
+        Dim dv As System.Data.DataView
+
+        Dim strF1 As String
+        Dim strF2 As String
+        Dim strF3 As String
+        Dim strF4 As String
+        Dim strF5 As String
+
+        Dim strConcUnits As String
+
+        Dim wrdselection As Microsoft.Office.Interop.Word.Selection
+        Dim tblD As System.Data.DataTable
+        Dim dvD As System.Data.DataView
+
+        Dim rowSC() As DataRow
+        Dim strFSC As String
+        Dim strFld As String
+        Dim posrow1, posrow2 As Short
+        Dim boolGo As Boolean
+        Dim strTempInfo
+        Dim strS As String
+
+
+        Dim intExp As Short
+
+        Dim fonts
+        Dim fontsize
+
+        Dim boolShowConcReason As Boolean = False
+        Dim boolShowReasReason As Boolean = False
+        Dim int8 As Short
+
+        Dim v1, v2, vU
+
+        Dim tbl1A As DataTable
+        Dim tbl2A As DataTable
+        Dim strR As String = "_xyz_"
+        Dim strR1 As String = "_abc_"
+
+        Dim strSubj As String
+        Dim boolHit As Boolean
+        Dim intDSId As Int64
+        Dim intL As Short
+
+        Dim fld As ADODB.Field
+        Dim strConcReason, strAnalyteAndMatrixFilter, strAnalyteMatrixandDesignIDFilter As String
+        Dim strM, strM1
+
+
+        Dim tblRepeatTableRows As New DataTable
+        Dim dvRepeatAllRunSamples, dvRepeatTableRows As DataView
+        Dim dvCalStdGroupAssayIDsAcc As New DataView(tblCalStdGroupAssayIDsAcc)
+        Dim dvDuplicates As DataView
+        Dim tblDuplicates As New DataTable
+        Dim ctDuplicates As Short
+        Dim boolFirstLine, boolFirstLineEntry As Boolean
+
+        Dim strSdvRepeatTableRowsSort As String = "" ' "DESIGNSUBJECTTAG ASC, WEEK ASC, ENDDAY ASC, ENDHOUR ASC, SAMPLERESULTS.RUNID ASC"
+        Dim strSdvRepeatAllRunSamplesSort As String = "" '"DESIGNSUBJECTTAG ASC, WEEK ASC, ENDDAY ASC, ENDHOUR ASC, SAMPLERESULTS.RUNID ASC, RUNSAMPLESEQUENCENUMBER ASC"
+
+        Dim dup1, dup2, numMeanDup, numOrig, numRV As Object
+        Dim numSpaceAfter As Single
+        Dim numSpaceAfterNew As Single
+
+        Dim strStartDay As String = ""
+        Dim strStartHour As String = ""
+        Dim strStartMinute As String = ""
+
+        '1=DESIGNSAMPLEID, 2=ANALYTEID, 3=DESIGNSUBJECTTAG, 4=TimePoint, 5=RUNID, 6=RUNSAMPLEORDERNUMBER, 7=DECISIONCODE
+
+        Dim numLLOQ As Decimal
+        Dim numULOQ As Decimal
+        Dim strBQL, strAQL As String
+        Dim numBQL As Decimal
+
+        Dim tblAG As DataTable = tblAnalyteGroups
+        Dim intGroup As Int16
+
+        Dim strTNameO As String 'original Table Name
+
+        Dim charFCID As String
+        strF = "ID_TBLREPORTTABLE = " & idTR
+        Dim rowsTR() As DataRow = tblReportTable.Select(strF)
+        var1 = rowsTR(0).Item("CHARFCID")
+        charFCID = NZ(var1, "NA")
+
+        Dim ANALYTEID As Int32
+        Dim MATRIX As String
+
+        Call LoadarrTP()
+
+        '****
+        'open new recordsets
+
+        Dim tblReassayReportNew As New DataTable
+        Dim tblrs1 As New DataTable
+        Dim tblrs3 As New DataTable
+        Dim tblrs6 As New DataTable
+        Dim tblrsSRCC As New DataTable
+        Dim tblrsT As New DataTable
+        Dim tblrsU As New DataTable
+        Dim tblrsSRC As New DataTable
+        Dim tblrsSCD As New DataTable
+        Dim tblrsSRMatrix As New DataTable
+        Dim tblrsARA As New DataTable
+
+        Dim daDoPr As OleDbDataAdapter = New OleDbDataAdapter()
+        'Dim dsDoPr As DataSet = New DataSet
+
+        Dim con As New ADODB.Connection
+        Dim rs1 As New ADODB.Recordset
+        Dim rs3 As New ADODB.Recordset
+        Dim rs6 As New ADODB.Recordset
+        Dim rsReassayReportNew As New ADODB.Recordset
+        Dim rsSRCC As New ADODB.Recordset
+        Dim rsT As New ADODB.Recordset
+        Dim rsU As New ADODB.Recordset
+        Dim rsSRC As New ADODB.Recordset 'SAMPLERESULTSCONFLICT
+        Dim rsSCD As New ADODB.Recordset 'SAMPLCONFLICTDEC - has reassay reasons
+        Dim rsSRMatrix As New ADODB.Recordset 'SAMPLERESULTS +
+        Dim rsARA As New ADODB.Recordset
+
+
+        'open con
+        con.Open(constrCur)
+
+        'open recordset
+
+        If boolAccess Then
+            str1 = "SELECT DISTINCT SAMPLERESULTS.DESIGNSAMPLEID, SAMPLERESULTS.ANALYTEID, DESIGNSUBJECT.DESIGNSUBJECTTAG, SAMPLERESULTS.RUNID, SAMPLERESULTS.RUNSAMPLESEQUENCENUMBER, SAMPLERESULTS.STUDYID, SAMPLERESULTS.CONCENTRATION, SAMPLERESULTS.CONCENTRATIONSTATUS, SAMPLERESULTS.CALIBRATIONRANGEFLAG, SAMPLERESULTS.CALIBRATIONRANGE, SAMPLERESULTS.ALIQUOTFACTOR, DESIGNSUBJECTTREATMENT.TREATMENTID, DESIGNEVENTSAMPLETIME.ENDDAY, DESIGNEVENTSAMPLETIME.ENDHOUR, DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY, DESIGNSAMPLE.DESIGNSUBJECTID, DESIGNSAMPLE.SUBJECTGROUPID,  "
+            str1 = str1 & "DESIGNSAMPLE.TREATMENTEVENTID, DESIGNSAMPLE.SAMPLETYPEKEY, DESIGNSAMPLE.SAMPLETYPEKEY, CONFIGSAMPLETYPES.SAMPLETYPEID, DESIGNSAMPLE.SPLITNUMBER, DESIGNEVENTSAMPLETIME.TIMETEXT, DESIGNEVENTSAMPLETIME.Week, DESIGNSAMPLE.COMMENTMEMO, DESIGNSAMPLE.USERSAMPLEID, DESIGNEVENTSAMPLETIME.Year, DESIGNEVENTSAMPLETIME.Month, DESIGNEVENTSAMPLETIME.STARTDAY, DESIGNEVENTSAMPLETIME.STARTHOUR, DESIGNEVENTSAMPLETIME.STARTMINUTE, DESIGNEVENTSAMPLETIME.STARTSECOND, DESIGNEVENTSAMPLETIME.ENDMINUTE, DESIGNEVENTSAMPLETIME.ENDSECOND, DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID, DESIGNTREATMENT.TREATMENTDESC "
+            str2 = "FROM ((CONFIGSAMPLETYPES INNER JOIN (SAMPLERESULTS INNER JOIN ((DESIGNSAMPLE INNER JOIN (DESIGNSUBJECT INNER JOIN DESIGNSUBJECTGROUP ON (DESIGNSUBJECT.SUBJECTGROUPID = DESIGNSUBJECTGROUP.SUBJECTGROUPID) AND (DESIGNSUBJECT.STUDYID = DESIGNSUBJECTGROUP.STUDYID)) ON (DESIGNSAMPLE.DESIGNSUBJECTID = DESIGNSUBJECT.DESIGNSUBJECTID) AND (DESIGNSAMPLE.STUDYID = DESIGNSUBJECT.STUDYID)) INNER JOIN DESIGNSUBJECTTREATMENT ON (DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY = DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY) AND (DESIGNSAMPLE.STUDYID = DESIGNSUBJECTTREATMENT.STUDYID)) "
+            str2 = str2 & "ON (SAMPLERESULTS.DESIGNSAMPLEID = DESIGNSAMPLE.DESIGNSAMPLEID) AND (SAMPLERESULTS.STUDYID = DESIGNSAMPLE.STUDYID)) ON CONFIGSAMPLETYPES.SAMPLETYPEKEY = DESIGNSAMPLE.SAMPLETYPEKEY) INNER JOIN DESIGNEVENTSAMPLETIME ON (DESIGNSAMPLE.SAMPLINGTIMEID = DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID) AND (DESIGNSAMPLE.STUDYID = DESIGNEVENTSAMPLETIME.STUDYID)) INNER JOIN DESIGNTREATMENT ON (DESIGNSUBJECTTREATMENT.TREATMENTKEY = DESIGNTREATMENT.TREATMENTKEY) AND (DESIGNSUBJECTTREATMENT.STUDYID = DESIGNTREATMENT.STUDYID) "
+            str3 = "WHERE(((SAMPLERESULTS.STUDYID) = " & wStudyID & ")) "
+            str4 = "ORDER BY SAMPLERESULTS.DESIGNSAMPLEID, SAMPLERESULTS.ANALYTEID, DESIGNSUBJECT.DESIGNSUBJECTTAG, SAMPLERESULTS.RUNID, SAMPLERESULTS.RUNSAMPLESEQUENCENUMBER;"
+        Else
+            str1 = "SELECT DISTINCT " & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID, " & strSchema & ".SAMPLERESULTS.ANALYTEID, " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTTAG, " & strSchema & ".SAMPLERESULTS.RUNID, " & strSchema & ".SAMPLERESULTS.RUNSAMPLESEQUENCENUMBER, " & strSchema & ".SAMPLERESULTS.STUDYID, " & strSchema & ".SAMPLERESULTS.CONCENTRATION, " & strSchema & ".SAMPLERESULTS.CONCENTRATIONSTATUS, " & strSchema & ".SAMPLERESULTS.CALIBRATIONRANGEFLAG, " & strSchema & ".SAMPLERESULTS.CALIBRATIONRANGE, " & strSchema & ".SAMPLERESULTS.ALIQUOTFACTOR, " & strSchema & ".DESIGNSUBJECTTREATMENT.TREATMENTID, " & strSchema & ".DESIGNEVENTSAMPLETIME.ENDDAY, " & strSchema & ".DESIGNEVENTSAMPLETIME.ENDHOUR, " & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY, " & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTID, " & strSchema & ".DESIGNSAMPLE.SUBJECTGROUPID,  "
+            str1 = str1 & strSchema & ".DESIGNSAMPLE.TREATMENTEVENTID, " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY, " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY, " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEID, " & strSchema & ".DESIGNSAMPLE.SPLITNUMBER, " & strSchema & ".DESIGNEVENTSAMPLETIME.TIMETEXT, " & strSchema & ".DESIGNEVENTSAMPLETIME.Week, " & strSchema & ".DESIGNSAMPLE.COMMENTMEMO, " & strSchema & ".DESIGNSAMPLE.USERSAMPLEID, " & strSchema & ".DESIGNEVENTSAMPLETIME.Year, " & strSchema & ".DESIGNEVENTSAMPLETIME.Month, " & strSchema & ".DESIGNEVENTSAMPLETIME.STARTDAY, " & strSchema & ".DESIGNEVENTSAMPLETIME.STARTHOUR, " & strSchema & ".DESIGNEVENTSAMPLETIME.STARTMINUTE, " & strSchema & ".DESIGNEVENTSAMPLETIME.STARTSECOND, " & strSchema & ".DESIGNEVENTSAMPLETIME.ENDMINUTE, " & strSchema & ".DESIGNEVENTSAMPLETIME.ENDSECOND, " & strSchema & ".DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID, " & strSchema & ".DESIGNTREATMENT.TREATMENTDESC "
+            str2 = "FROM ((" & strSchema & ".CONFIGSAMPLETYPES INNER JOIN (" & strSchema & ".SAMPLERESULTS INNER JOIN ((" & strSchema & ".DESIGNSAMPLE INNER JOIN (" & strSchema & ".DESIGNSUBJECT INNER JOIN " & strSchema & ".DESIGNSUBJECTGROUP ON (" & strSchema & ".DESIGNSUBJECT.SUBJECTGROUPID = " & strSchema & ".DESIGNSUBJECTGROUP.SUBJECTGROUPID) AND (" & strSchema & ".DESIGNSUBJECT.STUDYID = " & strSchema & ".DESIGNSUBJECTGROUP.STUDYID)) ON (" & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTID = " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTID) AND (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNSUBJECT.STUDYID)) INNER JOIN " & strSchema & ".DESIGNSUBJECTTREATMENT ON (" & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY = " & strSchema & ".DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY) AND (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNSUBJECTTREATMENT.STUDYID)) "
+            str2 = str2 & "ON (" & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID = " & strSchema & ".DESIGNSAMPLE.DESIGNSAMPLEID) AND (" & strSchema & ".SAMPLERESULTS.STUDYID = " & strSchema & ".DESIGNSAMPLE.STUDYID)) ON " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEKEY = " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY) INNER JOIN " & strSchema & ".DESIGNEVENTSAMPLETIME ON (" & strSchema & ".DESIGNSAMPLE.SAMPLINGTIMEID = " & strSchema & ".DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID) AND (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNEVENTSAMPLETIME.STUDYID)) INNER JOIN " & strSchema & ".DESIGNTREATMENT ON (" & strSchema & ".DESIGNSUBJECTTREATMENT.TREATMENTKEY = " & strSchema & ".DESIGNTREATMENT.TREATMENTKEY) AND (" & strSchema & ".DESIGNSUBJECTTREATMENT.STUDYID = " & strSchema & ".DESIGNTREATMENT.STUDYID) "
+            str3 = "WHERE(((" & strSchema & ".SAMPLERESULTS.STUDYID) = " & wStudyID & ")) "
+            str4 = "ORDER BY " & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID, " & strSchema & ".SAMPLERESULTS.ANALYTEID, " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTTAG, " & strSchema & ".SAMPLERESULTS.RUNID, " & strSchema & ".SAMPLERESULTS.RUNSAMPLESEQUENCENUMBER;"
+        End If
+
+        strSQL = str1 & str2 & str3 & str4
+        Console.WriteLine("rs1: " & strSQL)
+
+        rs1.CursorLocation = CursorLocationEnum.adUseClient
+        rs1.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rs1.ActiveConnection = Nothing
+
+        tblrs1.Clear()
+        tblrs1.AcceptChanges()
+        tblrs1.BeginLoadData()
+        daDoPr.Fill(tblrs1, rs1)
+        tblrs1.EndLoadData()
+
+
+        'get all injections
+        If boolAccess Then
+            str1 = "SELECT DISTINCT ANARUNANALYTERESULTS.CONCENTRATIONSTATUS, ANARUNANALYTERESULTS.CORRECTEDCONCENTRATION, ANARUNANALYTERESULTS.CONCENTRATION, ANARUNANALYTERESULTS.ANALYTEINDEX, ANARUNANALYTERESULTS.RUNSAMPLESEQUENCENUMBER, ANARUNANALYTERESULTS.RUNID, ANARUNANALYTERESULTS.STUDYID, ANALYTICALRUNSAMPLE.DESIGNSAMPLEID, ANALYTICALRUNSAMPLE.ALIQUOTFACTOR, CONFIGSAMPLETYPES.SAMPLETYPEID, DESIGNSUBJECT.DESIGNSUBJECTTAG, DESIGNSAMPLE.ENDDAY, DESIGNSAMPLE.ENDHOUR, ANARUNANALYTERESULTS.ELIMINATEDFLAG, "
+            str1 = str1 & "DESIGNSAMPLE.SPLITNUMBER , DESIGNEVENTSAMPLETIME.TIMETEXT, DESIGNSUBJECTTREATMENT.WEEK, DESIGNSAMPLE.COMMENTMEMO, DESIGNSAMPLE.USERSAMPLEID, DESIGNSAMPLE.STARTDAY, DESIGNSAMPLE.STARTHOUR, DESIGNSAMPLE.STARTMINUTE, DESIGNSAMPLE.STARTSECOND, DESIGNSAMPLE.ENDMINUTE, DESIGNSAMPLE.ENDSECOND, DESIGNSUBJECTTREATMENT.TREATMENTID, DESIGNSUBJECTTREATMENT.Year, DESIGNSUBJECTTREATMENT.Month, DESIGNSAMPLE.TREATMENTEVENTID, DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID, DESIGNTREATMENT.TREATMENTDESC "
+            str2 = "FROM ((DESIGNSUBJECTTREATMENT INNER JOIN ((((ANARUNANALYTERESULTS RIGHT JOIN ANALYTICALRUNSAMPLE ON (ANARUNANALYTERESULTS.STUDYID = ANALYTICALRUNSAMPLE.STUDYID) AND (ANARUNANALYTERESULTS.RUNID = ANALYTICALRUNSAMPLE.RUNID) AND (ANARUNANALYTERESULTS.RUNSAMPLESEQUENCENUMBER = ANALYTICALRUNSAMPLE.RUNSAMPLESEQUENCENUMBER)) INNER JOIN DESIGNSAMPLE ON (ANALYTICALRUNSAMPLE.DESIGNSAMPLEID = DESIGNSAMPLE.DESIGNSAMPLEID) AND (ANALYTICALRUNSAMPLE.STUDYID = DESIGNSAMPLE.STUDYID)) INNER JOIN "
+            str2 = str2 & "CONFIGSAMPLETYPES ON DESIGNSAMPLE.SAMPLETYPEKEY = CONFIGSAMPLETYPES.SAMPLETYPEKEY) INNER JOIN DESIGNSUBJECT ON (DESIGNSAMPLE.DESIGNSUBJECTID = DESIGNSUBJECT.DESIGNSUBJECTID) AND (DESIGNSAMPLE.STUDYID = DESIGNSUBJECT.STUDYID)) ON (DESIGNSUBJECTTREATMENT.STUDYID = DESIGNSAMPLE.STUDYID) AND (DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY = DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY)) INNER JOIN DESIGNEVENTSAMPLETIME ON (DESIGNEVENTSAMPLETIME.TREATMENTEVENTID = DESIGNSAMPLE.TREATMENTEVENTID) "
+            str2 = str2 & "AND (DESIGNSAMPLE.SAMPLINGTIMEID = DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID) AND (DESIGNSAMPLE.STUDYID = DESIGNEVENTSAMPLETIME.STUDYID)) INNER JOIN DESIGNTREATMENT ON (DESIGNSUBJECTTREATMENT.TREATMENTKEY = DESIGNTREATMENT.TREATMENTKEY) AND (DESIGNSUBJECTTREATMENT.STUDYID = DESIGNTREATMENT.STUDYID) "
+            str3 = "WHERE (((ANARUNANALYTERESULTS.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT DISTINCT " & strSchema & ".ANARUNANALYTERESULTS.CONCENTRATIONSTATUS, " & strSchema & ".ANARUNANALYTERESULTS.CORRECTEDCONCENTRATION, " & strSchema & ".ANARUNANALYTERESULTS.CONCENTRATION, " & strSchema & ".ANARUNANALYTERESULTS.ANALYTEINDEX, " & strSchema & ".ANARUNANALYTERESULTS.RUNSAMPLESEQUENCENUMBER, " & strSchema & ".ANARUNANALYTERESULTS.RUNID, " & strSchema & ".ANARUNANALYTERESULTS.STUDYID, " & strSchema & ".ANALYTICALRUNSAMPLE.DESIGNSAMPLEID, " & strSchema & ".ANALYTICALRUNSAMPLE.ALIQUOTFACTOR, " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEID, " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTTAG, " & strSchema & ".DESIGNSAMPLE.ENDDAY, " & strSchema & ".DESIGNSAMPLE.ENDHOUR, " & strSchema & ".ANARUNANALYTERESULTS.ELIMINATEDFLAG, "
+            str1 = str1 & strSchema & ".DESIGNSAMPLE.SPLITNUMBER , " & strSchema & ".DESIGNEVENTSAMPLETIME.TIMETEXT, " & strSchema & ".DESIGNSUBJECTTREATMENT.WEEK, " & strSchema & ".DESIGNSAMPLE.COMMENTMEMO, " & strSchema & ".DESIGNSAMPLE.USERSAMPLEID, " & strSchema & ".DESIGNSAMPLE.STARTDAY, " & strSchema & ".DESIGNSAMPLE.STARTHOUR, " & strSchema & ".DESIGNSAMPLE.STARTMINUTE, " & strSchema & ".DESIGNSAMPLE.STARTSECOND, " & strSchema & ".DESIGNSAMPLE.ENDMINUTE, " & strSchema & ".DESIGNSAMPLE.ENDSECOND, " & strSchema & ".DESIGNSUBJECTTREATMENT.TREATMENTID, " & strSchema & ".DESIGNSUBJECTTREATMENT.Year, " & strSchema & ".DESIGNSUBJECTTREATMENT.Month, " & strSchema & ".DESIGNSAMPLE.TREATMENTEVENTID, " & strSchema & ".DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID, " & strSchema & ".DESIGNTREATMENT.TREATMENTDESC "
+            str2 = "FROM ((" & strSchema & ".DESIGNSUBJECTTREATMENT INNER JOIN ((((" & strSchema & ".ANARUNANALYTERESULTS RIGHT JOIN " & strSchema & ".ANALYTICALRUNSAMPLE ON (" & strSchema & ".ANARUNANALYTERESULTS.STUDYID = " & strSchema & ".ANALYTICALRUNSAMPLE.STUDYID) AND (" & strSchema & ".ANARUNANALYTERESULTS.RUNID = " & strSchema & ".ANALYTICALRUNSAMPLE.RUNID) AND (" & strSchema & ".ANARUNANALYTERESULTS.RUNSAMPLESEQUENCENUMBER = " & strSchema & ".ANALYTICALRUNSAMPLE.RUNSAMPLESEQUENCENUMBER)) INNER JOIN " & strSchema & ".DESIGNSAMPLE ON (" & strSchema & ".ANALYTICALRUNSAMPLE.DESIGNSAMPLEID = " & strSchema & ".DESIGNSAMPLE.DESIGNSAMPLEID) AND (" & strSchema & ".ANALYTICALRUNSAMPLE.STUDYID = " & strSchema & ".DESIGNSAMPLE.STUDYID)) INNER JOIN "
+            str2 = str2 & strSchema & ".CONFIGSAMPLETYPES ON " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY = " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEKEY) INNER JOIN " & strSchema & ".DESIGNSUBJECT ON (" & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTID = " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTID) AND (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNSUBJECT.STUDYID)) ON (" & strSchema & ".DESIGNSUBJECTTREATMENT.STUDYID = " & strSchema & ".DESIGNSAMPLE.STUDYID) AND (" & strSchema & ".DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY = " & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY)) INNER JOIN " & strSchema & ".DESIGNEVENTSAMPLETIME ON (" & strSchema & ".DESIGNEVENTSAMPLETIME.TREATMENTEVENTID = " & strSchema & ".DESIGNSAMPLE.TREATMENTEVENTID) "
+            str2 = str2 & "AND (" & strSchema & ".DESIGNSAMPLE.SAMPLINGTIMEID = " & strSchema & ".DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID) AND (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNEVENTSAMPLETIME.STUDYID)) INNER JOIN " & strSchema & ".DESIGNTREATMENT ON (" & strSchema & ".DESIGNSUBJECTTREATMENT.TREATMENTKEY = " & strSchema & ".DESIGNTREATMENT.TREATMENTKEY) AND (" & strSchema & ".DESIGNSUBJECTTREATMENT.STUDYID = " & strSchema & ".DESIGNTREATMENT.STUDYID) "
+            str3 = "WHERE (((" & strSchema & ".ANARUNANALYTERESULTS.STUDYID)=" & wStudyID & "));"
+
+        End If
+
+        strSQL = str1 & str2 & str3
+
+        'Console.WriteLine("rs3: " & strSQL)
+
+        'RUNANALYTEREGRESSIONSTATUS
+        rs3.CursorLocation = CursorLocationEnum.adUseClient
+        rs3.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rs3.ActiveConnection = Nothing
+
+        tblrs3.Clear()
+        tblrs3.AcceptChanges()
+        tblrs3.BeginLoadData()
+        daDoPr.Fill(tblrs3, rs3)
+        tblrs3.EndLoadData()
+
+
+
+        If boolAccess Then
+            str1 = "SELECT DISTINCT ANALYTICALRUNANALYTES.STUDYID, ANALYTICALRUNANALYTES.RUNID, ASSAYANALYTES.ANALYTEID, ANALYTICALRUNANALYTES.ANALYTEINDEX, ANALYTICALRUNANALYTES.NM, ANALYTICALRUNANALYTES.VEC, ASSAYANALYTES.ASSAYID, ANALYTICALRUNANALYTES.RUNANALYTEREGRESSIONSTATUS "
+            str2 = "FROM (ANALYTICALRUNANALYTES INNER JOIN ASSAYANALYTES ON (ANALYTICALRUNANALYTES.STUDYID = ASSAYANALYTES.STUDYID) AND (ANALYTICALRUNANALYTES.ANALYTEINDEX = ASSAYANALYTES.ANALYTEINDEX)) INNER JOIN ANALYTICALRUN ON (ANALYTICALRUNANALYTES.RUNID = ANALYTICALRUN.RUNID) AND (ASSAYANALYTES.STUDYID = ANALYTICALRUN.STUDYID) AND (ASSAYANALYTES.ASSAYID = ANALYTICALRUN.ASSAYID) "
+            str3 = "WHERE (((ANALYTICALRUNANALYTES.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT DISTINCT " & strSchema & ".ANALYTICALRUNANALYTES.STUDYID, " & strSchema & ".ANALYTICALRUNANALYTES.RUNID, " & strSchema & ".ASSAYANALYTES.ANALYTEID, " & strSchema & ".ANALYTICALRUNANALYTES.ANALYTEINDEX, " & strSchema & ".ANALYTICALRUNANALYTES.NM, " & strSchema & ".ANALYTICALRUNANALYTES.VEC, " & strSchema & ".ASSAYANALYTES.ASSAYID, " & strSchema & ".ANALYTICALRUNANALYTES.RUNANALYTEREGRESSIONSTATUS "
+            str2 = "FROM (" & strSchema & ".ANALYTICALRUNANALYTES INNER JOIN " & strSchema & ".ASSAYANALYTES ON (" & strSchema & ".ANALYTICALRUNANALYTES.STUDYID = " & strSchema & ".ASSAYANALYTES.STUDYID) AND (" & strSchema & ".ANALYTICALRUNANALYTES.ANALYTEINDEX = " & strSchema & ".ASSAYANALYTES.ANALYTEINDEX)) INNER JOIN " & strSchema & ".ANALYTICALRUN ON (" & strSchema & ".ANALYTICALRUNANALYTES.RUNID = " & strSchema & ".ANALYTICALRUN.RUNID) AND (" & strSchema & ".ASSAYANALYTES.STUDYID = " & strSchema & ".ANALYTICALRUN.STUDYID) AND (" & strSchema & ".ASSAYANALYTES.ASSAYID = " & strSchema & ".ANALYTICALRUN.ASSAYID) "
+            str3 = "WHERE (((" & strSchema & ".ANALYTICALRUNANALYTES.STUDYID)=" & wStudyID & "));"
+
+        End If
+
+        strSQL = str1 & str2 & str3
+
+        rs6.CursorLocation = CursorLocationEnum.adUseClient
+        rs6.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rs6.ActiveConnection = Nothing
+
+        tblrs6.Clear()
+        tblrs6.AcceptChanges()
+        tblrs6.BeginLoadData()
+        daDoPr.Fill(tblrs6, rs6)
+        tblrs6.EndLoadData()
+
+
+
+        'set up query from SampResConflict
+        If boolAccess Then
+            str1 = "SELECT SAMPRESCONFLICTCHOICES.* "
+            str2 = "FROM SAMPRESCONFLICTCHOICES "
+            str3 = "WHERE (((SAMPRESCONFLICTCHOICES.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT " & strSchema & ".SAMPRESCONFLICTCHOICES.* "
+            str2 = "FROM " & strSchema & ".SAMPRESCONFLICTCHOICES "
+            str3 = "WHERE (((" & strSchema & ".SAMPRESCONFLICTCHOICES.STUDYID)=" & wStudyID & "));"
+
+        End If
+
+        strSQL = str1 & str2 & str3
+
+        rsSRCC.CursorLocation = CursorLocationEnum.adUseClient
+        rsSRCC.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rsSRCC.ActiveConnection = Nothing
+
+        tblrsSRCC.Clear()
+        tblrsSRCC.AcceptChanges()
+        tblrsSRCC.BeginLoadData()
+        daDoPr.Fill(tblrsSRCC, rsSRCC)
+        tblrsSRCC.EndLoadData()
+
+
+        If boolAccess Then
+            str1 = "SELECT DISTINCT SAMPLERESULTSCONFLICT.*, DESIGNSUBJECT.DESIGNSUBJECTTAG, CONFIGSAMPLETYPES.SAMPLETYPEID "
+            str2 = "FROM ((SAMPLERESULTSCONFLICT INNER JOIN DESIGNSAMPLE ON (SAMPLERESULTSCONFLICT.DESIGNSAMPLEID = DESIGNSAMPLE.DESIGNSAMPLEID) AND (SAMPLERESULTSCONFLICT.STUDYID = DESIGNSAMPLE.STUDYID)) INNER JOIN DESIGNSUBJECT ON (DESIGNSAMPLE.STUDYID = DESIGNSUBJECT.STUDYID) AND (DESIGNSAMPLE.DESIGNSUBJECTID = DESIGNSUBJECT.DESIGNSUBJECTID)) INNER JOIN CONFIGSAMPLETYPES ON DESIGNSAMPLE.SAMPLETYPEKEY = CONFIGSAMPLETYPES.SAMPLETYPEKEY "
+            str3 = "WHERE (((DESIGNSAMPLE.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT DISTINCT " & strSchema & ".SAMPLERESULTSCONFLICT.*, " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTTAG, " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEID "
+            str2 = "FROM ((" & strSchema & ".SAMPLERESULTSCONFLICT INNER JOIN " & strSchema & ".DESIGNSAMPLE ON (" & strSchema & ".SAMPLERESULTSCONFLICT.DESIGNSAMPLEID = " & strSchema & ".DESIGNSAMPLE.DESIGNSAMPLEID) AND (" & strSchema & ".SAMPLERESULTSCONFLICT.STUDYID = " & strSchema & ".DESIGNSAMPLE.STUDYID)) INNER JOIN " & strSchema & ".DESIGNSUBJECT ON (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNSUBJECT.STUDYID) AND (" & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTID = " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTID)) INNER JOIN " & strSchema & ".CONFIGSAMPLETYPES ON " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY = " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEKEY "
+            str3 = "WHERE (((" & strSchema & ".DESIGNSAMPLE.STUDYID)=" & wStudyID & "));"
+
+        End If
+
+        strSQL = str1 & str2 & str3
+
+        rsSRC.CursorLocation = CursorLocationEnum.adUseClient
+        rsSRC.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rsSRC.ActiveConnection = Nothing
+
+        tblrsSRC.Clear()
+        tblrsSRC.AcceptChanges()
+        tblrsSRC.BeginLoadData()
+        daDoPr.Fill(tblrsSRC, rsSRC)
+        tblrsSRC.EndLoadData()
+
+
+
+        If boolAccess Then
+            str1 = "SELECT DISTINCT SAMPLERESULTSCONFLICT.ANALYTEID, DESIGNSUBJECT.DESIGNSUBJECTTAG, DESIGNSUBJECTGROUP.SUBJECTGROUPNAME, DESIGNSUBJECTTREATMENT.Year, DESIGNSUBJECTTREATMENT.Month, DESIGNSUBJECTTREATMENT.Week, DESIGNSAMPLE.ENDDAY, DESIGNSAMPLE.ENDHOUR, DESIGNSAMPLE.ENDMINUTE, DESIGNSAMPLE.ENDSECOND, DESIGNSAMPLE.STARTDAY, DESIGNSAMPLE.STARTHOUR, DESIGNSAMPLE.STARTMINUTE, DESIGNSAMPLE.STARTSECOND, "
+            str1 = str1 & "SAMPLERESULTSCONFLICT.ORIGINALVALUE, SAMPLERESULTSCONFLICT.RUNID, SAMPLERESULTSCONFLICT.RUNSAMPLESEQUENCENUMBER, SAMPLERESULTSCONFLICT.DESIGNSAMPLEID, SAMPLERESULTSCONFLICT.STUDYID, DESIGNSAMPLE.TREATMENTEVENTID, SAMPRESCONFLICTDEC.REASSAYCONCREASON, SAMPRESCONFLICTDEC.DECISIONCODE, SAMPRESCONFLICTDEC.RECORDTIMESTAMP, SAMPRESCONFLICTCHOICES.RECORDTIMESTAMP, SAMPLERESULTS.ACCEPTANCETIMESTAMP, "
+            str1 = str1 & "SAMPLERESULTSCONFLICT.RECORDTIMESTAMP, DESIGNSUBJECT.DESIGNSUBJECTID, CONFIGSAMPLETYPES.SAMPLETYPEID, DESIGNSAMPLE.USERSAMPLEID, SAMPLERESULTS.CONCENTRATION, SAMPLERESULTS.ALIQUOTFACTOR, SAMPLERESULTS.CALIBRATIONRANGE, SAMPLERESULTS.CALIBRATIONRANGEFLAG, SAMPLERESULTS.CONCENTRATIONSTATUS, SAMPLERESULTS.SAMPLESTATUS, DESIGNSUBJECTTREATMENT.TREATMENTID, DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY, "
+            str1 = str1 & "SAMPRESCONFLICTDEC.REASSAYREASON, DESIGNSAMPLE.SPLITNUMBER, DESIGNEVENTSAMPLETIME.TIMETEXT, DESIGNSAMPLE.COMMENTMEMO, DESIGNSAMPLE.SAMPLINGTIMEID, DESIGNSUBJECTGROUP.SUBJECTGROUPID, DESIGNTREATMENT.TREATMENTDESC, DESIGNSUBJECTTREATMENT.VISITTEXT "
+            str2 = "FROM DESIGNTREATMENT INNER JOIN (((((SAMPLERESULTS INNER JOIN (SAMPLERESULTSCONFLICT INNER JOIN (SAMPRESCONFLICTCHOICES INNER JOIN SAMPRESCONFLICTDEC ON (SAMPRESCONFLICTCHOICES.DESIGNSAMPLEID = SAMPRESCONFLICTDEC.DESIGNSAMPLEID) AND (SAMPRESCONFLICTCHOICES.RECORDTIMESTAMP = SAMPRESCONFLICTDEC.RECORDTIMESTAMP) AND (SAMPRESCONFLICTCHOICES.ANALYTEID = SAMPRESCONFLICTDEC.ANALYTEID) AND (SAMPRESCONFLICTCHOICES.STUDYID = SAMPRESCONFLICTDEC.STUDYID)) "
+            str2 = str2 & "ON (SAMPLERESULTSCONFLICT.DESIGNSAMPLEID = SAMPRESCONFLICTCHOICES.DESIGNSAMPLEID) AND (SAMPLERESULTSCONFLICT.ANALYTEID = SAMPRESCONFLICTCHOICES.ANALYTEID) AND (SAMPLERESULTSCONFLICT.STUDYID = SAMPRESCONFLICTCHOICES.STUDYID)) ON (SAMPLERESULTS.DESIGNSAMPLEID = SAMPLERESULTSCONFLICT.DESIGNSAMPLEID) AND (SAMPLERESULTS.STUDYID = SAMPLERESULTSCONFLICT.STUDYID) AND "
+            str2 = str2 & "(SAMPLERESULTS.ACCEPTANCETIMESTAMP = SAMPRESCONFLICTCHOICES.RECORDTIMESTAMP) AND (SAMPLERESULTS.ANALYTEID = SAMPLERESULTSCONFLICT.ANALYTEID)) INNER JOIN ((DESIGNSAMPLE INNER JOIN DESIGNSUBJECT ON (DESIGNSAMPLE.DESIGNSUBJECTID = DESIGNSUBJECT.DESIGNSUBJECTID) AND (DESIGNSAMPLE.STUDYID = DESIGNSUBJECT.STUDYID)) INNER JOIN DESIGNSUBJECTGROUP ON (DESIGNSUBJECT.SUBJECTGROUPID = DESIGNSUBJECTGROUP.SUBJECTGROUPID) AND "
+            str2 = str2 & "(DESIGNSUBJECT.STUDYID = DESIGNSUBJECTGROUP.STUDYID)) ON (SAMPLERESULTS.STUDYID = DESIGNSAMPLE.STUDYID) AND (SAMPLERESULTS.DESIGNSAMPLEID = DESIGNSAMPLE.DESIGNSAMPLEID)) INNER JOIN DESIGNSUBJECTTREATMENT ON (DESIGNSAMPLE.STUDYID = DESIGNSUBJECTTREATMENT.STUDYID) AND (DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY = DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY)) INNER JOIN CONFIGSAMPLETYPES ON DESIGNSAMPLE.SAMPLETYPEKEY = CONFIGSAMPLETYPES.SAMPLETYPEKEY) "
+            str2 = str2 & "INNER JOIN DESIGNEVENTSAMPLETIME ON (DESIGNSAMPLE.SAMPLINGTIMEID = DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID) AND (DESIGNSAMPLE.STUDYID = DESIGNEVENTSAMPLETIME.STUDYID) AND (DESIGNSAMPLE.TREATMENTEVENTID = DESIGNEVENTSAMPLETIME.TREATMENTEVENTID)) ON (DESIGNTREATMENT.TREATMENTKEY = DESIGNSUBJECTTREATMENT.TREATMENTKEY) AND (DESIGNTREATMENT.STUDYID = DESIGNSUBJECTTREATMENT.STUDYID) "
+            str3 = "WHERE(((SAMPLERESULTSCONFLICT.STUDYID) = " & wStudyID & ") And ((DESIGNSUBJECT.DESIGNSUBJECTID) > 0))"
+            str4 = "ORDER BY DESIGNSUBJECT.DESIGNSUBJECTTAG, DESIGNSUBJECTGROUP.SUBJECTGROUPNAME, DESIGNSUBJECTTREATMENT.Year, DESIGNSUBJECTTREATMENT.Month, DESIGNSUBJECTTREATMENT.Week, DESIGNSAMPLE.ENDDAY, DESIGNSAMPLE.ENDHOUR, DESIGNSAMPLE.ENDMINUTE;"
+
+        Else
+            str1 = "SELECT DISTINCT " & strSchema & ".SAMPLERESULTSCONFLICT.ANALYTEID, " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTTAG, " & strSchema & ".DESIGNSUBJECTGROUP.SUBJECTGROUPNAME, " & strSchema & ".DESIGNSUBJECTTREATMENT.Year, " & strSchema & ".DESIGNSUBJECTTREATMENT.Month, " & strSchema & ".DESIGNSUBJECTTREATMENT.Week, " & strSchema & ".DESIGNSAMPLE.ENDDAY, " & strSchema & ".DESIGNSAMPLE.ENDHOUR, " & strSchema & ".DESIGNSAMPLE.ENDMINUTE, " & strSchema & ".DESIGNSAMPLE.ENDSECOND, " & strSchema & ".DESIGNSAMPLE.STARTDAY, " & strSchema & ".DESIGNSAMPLE.STARTHOUR, " & strSchema & ".DESIGNSAMPLE.STARTMINUTE, " & strSchema & ".DESIGNSAMPLE.STARTSECOND, "
+            str1 = str1 & strSchema & ".SAMPLERESULTSCONFLICT.ORIGINALVALUE, " & strSchema & ".SAMPLERESULTSCONFLICT.RUNID, " & strSchema & ".SAMPLERESULTSCONFLICT.RUNSAMPLESEQUENCENUMBER, " & strSchema & ".SAMPLERESULTSCONFLICT.DESIGNSAMPLEID, " & strSchema & ".SAMPLERESULTSCONFLICT.STUDYID, " & strSchema & ".DESIGNSAMPLE.TREATMENTEVENTID, " & strSchema & ".SAMPRESCONFLICTDEC.REASSAYCONCREASON, " & strSchema & ".SAMPRESCONFLICTDEC.DECISIONCODE, " & strSchema & ".SAMPRESCONFLICTDEC.RECORDTIMESTAMP, " & strSchema & ".SAMPRESCONFLICTCHOICES.RECORDTIMESTAMP, " & strSchema & ".SAMPLERESULTS.ACCEPTANCETIMESTAMP, "
+            str1 = str1 & strSchema & ".SAMPLERESULTSCONFLICT.RECORDTIMESTAMP, " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTID, " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEID, " & strSchema & ".DESIGNSAMPLE.USERSAMPLEID, " & strSchema & ".SAMPLERESULTS.CONCENTRATION, " & strSchema & ".SAMPLERESULTS.ALIQUOTFACTOR, " & strSchema & ".SAMPLERESULTS.CALIBRATIONRANGE, " & strSchema & ".SAMPLERESULTS.CALIBRATIONRANGEFLAG, " & strSchema & ".SAMPLERESULTS.CONCENTRATIONSTATUS, " & strSchema & ".SAMPLERESULTS.SAMPLESTATUS, " & strSchema & ".DESIGNSUBJECTTREATMENT.TREATMENTID, " & strSchema & ".DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY, "
+            str1 = str1 & strSchema & ".SAMPRESCONFLICTDEC.REASSAYREASON, " & strSchema & ".DESIGNSAMPLE.SPLITNUMBER, " & strSchema & ".DESIGNEVENTSAMPLETIME.TIMETEXT, " & strSchema & ".DESIGNSAMPLE.COMMENTMEMO, " & strSchema & ".DESIGNSAMPLE.SAMPLINGTIMEID, " & strSchema & ".DESIGNSUBJECTGROUP.SUBJECTGROUPID, " & strSchema & ".DESIGNTREATMENT.TREATMENTDESC, " & strSchema & ".DESIGNSUBJECTTREATMENT.VISITTEXT "
+            str2 = "FROM " & strSchema & ".DESIGNTREATMENT INNER JOIN (((((" & strSchema & ".SAMPLERESULTS INNER JOIN (" & strSchema & ".SAMPLERESULTSCONFLICT INNER JOIN (" & strSchema & ".SAMPRESCONFLICTCHOICES INNER JOIN " & strSchema & ".SAMPRESCONFLICTDEC ON (" & strSchema & ".SAMPRESCONFLICTCHOICES.DESIGNSAMPLEID = " & strSchema & ".SAMPRESCONFLICTDEC.DESIGNSAMPLEID) AND (" & strSchema & ".SAMPRESCONFLICTCHOICES.RECORDTIMESTAMP = " & strSchema & ".SAMPRESCONFLICTDEC.RECORDTIMESTAMP) AND (" & strSchema & ".SAMPRESCONFLICTCHOICES.ANALYTEID = " & strSchema & ".SAMPRESCONFLICTDEC.ANALYTEID) AND (" & strSchema & ".SAMPRESCONFLICTCHOICES.STUDYID = " & strSchema & ".SAMPRESCONFLICTDEC.STUDYID)) "
+            str2 = str2 & "ON (" & strSchema & ".SAMPLERESULTSCONFLICT.DESIGNSAMPLEID = " & strSchema & ".SAMPRESCONFLICTCHOICES.DESIGNSAMPLEID) AND (" & strSchema & ".SAMPLERESULTSCONFLICT.ANALYTEID = " & strSchema & ".SAMPRESCONFLICTCHOICES.ANALYTEID) AND (" & strSchema & ".SAMPLERESULTSCONFLICT.STUDYID = " & strSchema & ".SAMPRESCONFLICTCHOICES.STUDYID)) ON (" & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID = " & strSchema & ".SAMPLERESULTSCONFLICT.DESIGNSAMPLEID) AND (" & strSchema & ".SAMPLERESULTS.STUDYID = " & strSchema & ".SAMPLERESULTSCONFLICT.STUDYID) AND "
+            str2 = str2 & "(" & strSchema & ".SAMPLERESULTS.ACCEPTANCETIMESTAMP = " & strSchema & ".SAMPRESCONFLICTCHOICES.RECORDTIMESTAMP) AND (" & strSchema & ".SAMPLERESULTS.ANALYTEID = " & strSchema & ".SAMPLERESULTSCONFLICT.ANALYTEID)) INNER JOIN ((" & strSchema & ".DESIGNSAMPLE INNER JOIN " & strSchema & ".DESIGNSUBJECT ON (" & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTID = " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTID) AND (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNSUBJECT.STUDYID)) INNER JOIN " & strSchema & ".DESIGNSUBJECTGROUP ON (" & strSchema & ".DESIGNSUBJECT.SUBJECTGROUPID = " & strSchema & ".DESIGNSUBJECTGROUP.SUBJECTGROUPID) AND "
+            str2 = str2 & "(" & strSchema & ".DESIGNSUBJECT.STUDYID = " & strSchema & ".DESIGNSUBJECTGROUP.STUDYID)) ON (" & strSchema & ".SAMPLERESULTS.STUDYID = " & strSchema & ".DESIGNSAMPLE.STUDYID) AND (" & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID = " & strSchema & ".DESIGNSAMPLE.DESIGNSAMPLEID)) INNER JOIN " & strSchema & ".DESIGNSUBJECTTREATMENT ON (" & strSchema & ".DESIGNSAMPLE.STUDYID = " & strSchema & ".DESIGNSUBJECTTREATMENT.STUDYID) AND ( " & strSchema & ".DESIGNSAMPLE.DESIGNSUBJECTTREATMENTKEY = " & strSchema & ".DESIGNSUBJECTTREATMENT.DESIGNSUBJECTTREATMENTKEY)) INNER JOIN " & strSchema & ".CONFIGSAMPLETYPES ON " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY = " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEKEY) "
+            str2 = str2 & "INNER JOIN  " & strSchema & ".DESIGNEVENTSAMPLETIME ON ( " & strSchema & ".DESIGNSAMPLE.SAMPLINGTIMEID =  " & strSchema & ".DESIGNEVENTSAMPLETIME.SAMPLINGTIMEID) AND ( " & strSchema & ".DESIGNSAMPLE.STUDYID =  " & strSchema & ".DESIGNEVENTSAMPLETIME.STUDYID) AND ( " & strSchema & ".DESIGNSAMPLE.TREATMENTEVENTID =  " & strSchema & ".DESIGNEVENTSAMPLETIME.TREATMENTEVENTID)) ON ( " & strSchema & ".DESIGNTREATMENT.TREATMENTKEY =  " & strSchema & ".DESIGNSUBJECTTREATMENT.TREATMENTKEY) AND ( " & strSchema & ".DESIGNTREATMENT.STUDYID =  " & strSchema & ".DESIGNSUBJECTTREATMENT.STUDYID) "
+            str3 = "WHERE(((" & strSchema & ".SAMPLERESULTSCONFLICT.STUDYID) = " & wStudyID & ") And ((" & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTID) > 0))"
+            str4 = "ORDER BY " & strSchema & ".DESIGNSUBJECT.DESIGNSUBJECTTAG, " & strSchema & ".DESIGNSUBJECTGROUP.SUBJECTGROUPNAME, " & strSchema & ".DESIGNSUBJECTTREATMENT.Year, " & strSchema & ".DESIGNSUBJECTTREATMENT.Month, " & strSchema & ".DESIGNSUBJECTTREATMENT.Week, " & strSchema & ".DESIGNSAMPLE.ENDDAY, " & strSchema & ".DESIGNSAMPLE.ENDHOUR, " & strSchema & ".DESIGNSAMPLE.ENDMINUTE;"
+
+        End If
+
+        strSQL = str1 & str2 & str3 & str4
+
+        'Console.WriteLine("tblReassayReportNew: " & strSQL)
+
+        rsReassayReportNew.CursorLocation = CursorLocationEnum.adUseClient
+        rsReassayReportNew.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rsReassayReportNew.ActiveConnection = Nothing
+
+        tblReassayReportNew.Clear()
+        tblReassayReportNew.AcceptChanges()
+        tblReassayReportNew.BeginLoadData()
+        daDoPr.Fill(tblReassayReportNew, rsReassayReportNew)
+        tblReassayReportNew.EndLoadData()
+
+
+        If boolAccess Then
+            str1 = "SELECT DISTINCT SAMPRESCONFLICTDEC.* "
+            str2 = "FROM SAMPRESCONFLICTDEC "
+            str3 = "WHERE (((SAMPRESCONFLICTDEC.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT DISTINCT " & strSchema & ".SAMPRESCONFLICTDEC.* "
+            str2 = "FROM " & strSchema & ".SAMPRESCONFLICTDEC "
+            str3 = "WHERE (((" & strSchema & ".SAMPRESCONFLICTDEC.STUDYID)=" & wStudyID & "));"
+
+        End If
+        strSQL = str1 & str2 & str3
+
+        rsSCD.CursorLocation = CursorLocationEnum.adUseClient
+        rsSCD.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rsSCD.ActiveConnection = Nothing
+
+        tblrsSCD.Clear()
+        tblrsSCD.AcceptChanges()
+        tblrsSCD.BeginLoadData()
+        daDoPr.Fill(tblrsSCD, rsSCD)
+        tblrsSCD.EndLoadData()
+
+
+        If boolAccess Then
+            str1 = "SELECT SAMPLERESULTS.STUDYID, SAMPLERESULTS.DESIGNSAMPLEID, SAMPLERESULTS.ANALYTEID, SAMPLERESULTS.RUNID, SAMPLERESULTS.RUNSAMPLESEQUENCENUMBER, DESIGNSAMPLE.SAMPLETYPEKEY, CONFIGSAMPLETYPES.SAMPLETYPEID, SAMPLERESULTS.SAMPLESTATUS, SAMPLERESULTS.CONCENTRATION, SAMPLERESULTS.CONCENTRATIONSTATUS, SAMPLERESULTS.CALIBRATIONRANGEFLAG, SAMPLERESULTS.CALIBRATIONRANGE, SAMPLERESULTS.ALIQUOTFACTOR "
+            str2 = "FROM (SAMPLERESULTS INNER JOIN DESIGNSAMPLE ON (SAMPLERESULTS.DESIGNSAMPLEID = DESIGNSAMPLE.DESIGNSAMPLEID) AND (SAMPLERESULTS.STUDYID = DESIGNSAMPLE.STUDYID)) INNER JOIN CONFIGSAMPLETYPES ON DESIGNSAMPLE.SAMPLETYPEKEY = CONFIGSAMPLETYPES.SAMPLETYPEKEY "
+            str3 = "WHERE (((SAMPLERESULTS.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT " & strSchema & ".SAMPLERESULTS.STUDYID, " & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID, " & strSchema & ".SAMPLERESULTS.ANALYTEID, " & strSchema & ".SAMPLERESULTS.RUNID, " & strSchema & ".SAMPLERESULTS.RUNSAMPLESEQUENCENUMBER, " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY, " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEID, " & strSchema & ".SAMPLERESULTS.SAMPLESTATUS, " & strSchema & ".SAMPLERESULTS.CONCENTRATION, " & strSchema & ".SAMPLERESULTS.CONCENTRATIONSTATUS, " & strSchema & ".SAMPLERESULTS.CALIBRATIONRANGEFLAG, " & strSchema & ".SAMPLERESULTS.CALIBRATIONRANGE, " & strSchema & ".SAMPLERESULTS.ALIQUOTFACTOR "
+            str2 = "FROM (" & strSchema & ".SAMPLERESULTS INNER JOIN " & strSchema & ".DESIGNSAMPLE ON (" & strSchema & ".SAMPLERESULTS.DESIGNSAMPLEID = " & strSchema & ".DESIGNSAMPLE.DESIGNSAMPLEID) AND (" & strSchema & ".SAMPLERESULTS.STUDYID = " & strSchema & ".DESIGNSAMPLE.STUDYID)) INNER JOIN " & strSchema & ".CONFIGSAMPLETYPES ON " & strSchema & ".DESIGNSAMPLE.SAMPLETYPEKEY = " & strSchema & ".CONFIGSAMPLETYPES.SAMPLETYPEKEY "
+            str3 = "WHERE (((" & strSchema & ".SAMPLERESULTS.STUDYID)=" & wStudyID & "));"
+
+        End If
+
+        strSQL = str1 & str2 & str3
+
+        rsSRMatrix.CursorLocation = CursorLocationEnum.adUseClient
+        rsSRMatrix.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rsSRMatrix.ActiveConnection = Nothing
+
+        tblrsSRMatrix.Clear()
+        tblrsSRMatrix.AcceptChanges()
+        tblrsSRMatrix.BeginLoadData()
+        daDoPr.Fill(tblrsSRMatrix, rsSRMatrix)
+        tblrsSRMatrix.EndLoadData()
+
+
+        If boolAccess Then
+            str1 = "SELECT ANALYTICALRUNANALYTES.STUDYID, ANALYTICALRUNANALYTES.ANALYTEINDEX, ANALYTICALRUNANALYTES.RUNID, ANALYTICALRUNANALYTES.RUNANALYTEREGRESSIONSTATUS "
+            str2 = "FROM ANALYTICALRUNANALYTES "
+            str3 = "WHERE (((ANALYTICALRUNANALYTES.STUDYID)=" & wStudyID & "));"
+
+        Else
+            str1 = "SELECT " & strSchema & ".ANALYTICALRUNANALYTES.STUDYID, " & strSchema & ".ANALYTICALRUNANALYTES.ANALYTEINDEX, " & strSchema & ".ANALYTICALRUNANALYTES.RUNID, " & strSchema & ".ANALYTICALRUNANALYTES.RUNANALYTEREGRESSIONSTATUS "
+            str2 = "FROM " & strSchema & ".ANALYTICALRUNANALYTES "
+            str3 = "WHERE (((" & strSchema & ".ANALYTICALRUNANALYTES.STUDYID)=" & wStudyID & "));"
+
+        End If
+
+        strSQL = str1 & str2 & str3
+
+
+        rsARA.CursorLocation = CursorLocationEnum.adUseClient
+        rsARA.Open(strSQL, con, CursorTypeEnum.adOpenStatic, LockTypeEnum.adLockReadOnly)
+        rsARA.ActiveConnection = Nothing
+
+        tblrsARA.Clear()
+        tblrsARA.AcceptChanges()
+        tblrsARA.BeginLoadData()
+        daDoPr.Fill(tblrsARA, rsARA)
+        tblrsARA.EndLoadData()
+
+
+        If rs1.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rs1.Close()
+        End If
+        rs1 = Nothing
+        If rs3.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rs3.Close()
+        End If
+        rs3 = Nothing
+        If rs6.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rs6.Close()
+        End If
+        rs6 = Nothing
+        If rsReassayReportNew.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsReassayReportNew.Close()
+        End If
+        rsReassayReportNew = Nothing
+        If rsSRCC.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsSRCC.Close()
+        End If
+        rsSRCC = Nothing
+        If rsT.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsT.Close()
+        End If
+        rsT = Nothing
+        If rsU.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsU.Close()
+        End If
+        rsU = Nothing
+        If rsSRC.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsSRC.Close()
+        End If
+        rsSRC = Nothing
+        If rsSCD.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsSCD.Close()
+        End If
+        rsSCD = Nothing
+        If rsSRMatrix.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsSRMatrix.Close()
+        End If
+        rsSRMatrix = Nothing
+        If rsARA.State = ADODB.ObjectStateEnum.adStateOpen Then
+            rsARA.Close()
+        End If
+        rsARA = Nothing
+
+        If con.State = ADODB.ObjectStateEnum.adStateOpen Then
+            con.Close()
+        End If
+        con = Nothing
+
+        For Count2 = 1 To 27
+
+            Select Case Count2
+                Case 1
+                    str1 = "DESIGNSUBJECTTAG"
+                Case 2
+                    str1 = "ORIGINALVALUE"
+                Case 3
+                    str1 = "DESIGNSAMPLEID"
+                Case 4
+                    str1 = "UString"
+                Case 5
+                    str1 = "TREATMENTID"
+                Case 6
+                    str1 = "DESIGNSUBJECTTREATMENTKEY"
+                Case 7
+                    str1 = "MATRIX"
+                Case 8
+                    str1 = "RUNSAMPLESEQUENCENUMBER"
+                Case 9
+                    str1 = "SPLITNUMBER"
+                Case 10
+                    str1 = "TIMETEXT"
+                Case 11
+                    str1 = "USERSAMPLEID"
+                Case 12
+                    str1 = "YEAR"
+                Case 13
+                    str1 = "MONTH"
+                Case 14
+                    str1 = "WEEK"
+                Case 15
+                    str1 = "ENDDAY"
+                Case 16
+                    str1 = "ENDHOUR"
+                Case 17
+                    str1 = "ENDMINUTE"
+                Case 18
+                    str1 = "ENDSECOND"
+                Case 19
+                    str1 = "STARTDAY"
+                Case 20
+                    str1 = "STARTHOUR"
+                Case 21
+                    str1 = "STARTMINUTE"
+                Case 22
+                    str1 = "STARTSECOND"
+                Case 23
+                    str1 = "RUNID"
+                Case 24
+                    str1 = "TREATMENTEVENTID"
+                Case 25
+                    str1 = "SAMPLINGTIMEID"
+                Case 26
+                    str1 = "SUBJECTGROUPNAME"
+                Case 27
+                    str1 = "VISITTEXT"
+
+
+            End Select
+
+            If tblrsU.Columns.Contains(str1) Then
+                Exit For
+            End If
+
+            Dim col1 As New DataColumn
+            col1.ColumnName = str1
+            tblrsU.Columns.Add(col1)
+
+        Next Count2
+
+
+        'end new recordsets
+        '*****
+
+
+        ' wd.Visible = True
+
+        With wd
+
+            ''''''''wdd.visible = True
+
+            fontsize = wd.ActiveDocument.Styles("Normal").Font.Size ' .Selection.Font.Size
+            fonts = fontsize ' .Selection.Font.Size
+
+            Dim intTableID As Short
+            intTableID = 6
+
+            Dim strWRunId As String = GetWatsonColH(intTableID)
+
+            dvDo = frmH.dgvReportTableConfiguration.DataSource
+            intDo = FindRowDVNumByCol(intTableID, dvDo, "id_tblconfigreporttables")
+
+            '***
+            intDo = FindRowDVNumByCol(idTR, dvDo, "ID_TBLREPORTTABLE")
+            intLeg = 0
+
+            'intLegStart = 96
+            'boolPro = False
+
+            'Get table name
+            'var1 = dvDo(intDo).Item("Table")
+            var1 = dvDo(intDo).Item("CHARHEADINGTEXT")
+            strTNameO = NZ(var1, "[NONE]")
+
+            'get Temperature info
+            var1 = dvDo(intDo).Item("CHARSTABILITYPERIOD")
+            strTempInfo = NZ(var1, "[NONE]")
+
+            '***
+
+            ctPB = ctPB + 1
+            If ctPB > frmH.pb1.Maximum Then
+                ctPB = 1
+            End If
+            frmH.pb1.Value = ctPB
+            frmH.pb1.Refresh()
+
+            Dim strSortARS As String
+
+            Dim boolM As Boolean = False
+
+            Dim strAnalyteID, strAnalyteDescription As String
+            Dim strMatrix As String
+
+            Dim dv11 As New DataView(tblAnalytesHome, "IsIntStd = 'No'", "INTORDER ASC, OriginalAnalyteDescription ASC", DataViewRowState.CurrentRows)
+            Dim tbl11 As DataTable = dv11.ToTable("a", True, "AnalyteID", "OriginalAnalyteDescription", "Matrix", "ConcUnits", "IsIntStd")
+
+            strF = "IsIntStd = 'No'"
+            strS = "INTORDER ASC" ', IsIntStd ASC, OriginalAnalyteDescription ASC"
+            Dim rows11() As DataRow = tbl11.Select()
+            Dim intRowsAnal As Short = rows11.Length
+
+            For Count2A = 0 To intRowsAnal - 1 'Iterate through each AnalyteID, and generate the information
+
+                '20180201 LEE:
+                intLeg = 0
+                ctLegend1 = 0
+
+                '20171128 LEE:
+                strTName = strTNameO 'reset strTName
+
+                boolPlaceHolderTemp = False
+                boolDoPlaceHolderTemp = False
+
+                boolShowReasReason = False
+                boolShowConcReason = False
+
+                Dim boolBQL As Boolean = False
+                Dim boolAQL As Boolean = False
+                Dim boolNA As Boolean = False
+                Dim boolNR As Boolean = False
+
+                Dim arrLegend1(4, 100)
+                '1= Actual string to search in table
+                '2= Definition of string
+                '3= Not used
+                '4= True: Do not look for item in table, but add buffer row to row count.  False: Look for item in table; if found, add buffer row to row count
+
+
+                Dim arrReassayRows(100)
+                Dim arrReassay(9, 100)
+                Dim arrReasons(100)
+                Dim arrReasonsC(100)
+
+                Dim arrLegend(4, 1000) 'Reason for Reassay
+                Dim arrLegendC(3, 1000) 'Reason for Reported Concentration
+
+                Dim strPaste As String = ""
+                Dim strPasteT As String = ""
+
+                Dim strC As String = ""
+
+
+                '20180216 LEE: 
+                Try
+                    strAnalyteID = rows11(Count2A).Item("AnalyteID")
+                    strAnalyteDescription = rows11(Count2A).Item("OriginalAnalyteDescription")
+                    strMatrix = rows11(Count2A).Item("Matrix")
+                    strConcUnits = rows11(Count2A).Item("ConcUnits")
+                    'intGroup = rows11(Count2A).Item("INTGROUP")
+
+                    ANALYTEID = CLng(strAnalyteID)
+                    MATRIX = strMatrix
+
+                Catch ex As Exception
+                    var1 = var1 'debug
+                End Try
+
+                strAnalyteAndMatrixFilter = "SAMPLETYPEID = '" & strMatrix & "' AND ANALYTEID = " & strAnalyteID
+
+                If (Not (boolGenerateTableForThisAnalyteIDandMatrix(intDo, strAnalyteID, strMatrix))) Then
+                    GoTo next1
+                End If
+
+                intTCur = intTCur + 1
+
+                strM = "Creating " & strTName & " For " & strAnalyteDescription & "..."
+                strM = strM & ChrW(10) & "Table " & intTCur & " of " & intTTot & " tables..."
+                strM1 = strM
+                frmH.lblProgress.Text = strM
+                frmH.Refresh()
+
+                '20180622 LEE:
+                'This needs to be addressed
+                If boolPlaceHolder Then
+
+                    'insert page break
+                    Call InsertPageBreak(wd)
+                    '.Selection.InsertBreak(Type:=Microsoft.Office.Interop.Word.WdBreakType.wdSectionBreakNextPage)
+                    Call PageSetup(wd, str1) 'L=Landscape, P=Portrait
+
+                    GoTo skipPlaceholder
+
+                End If
+
+
+
+                '***New Logic 1
+
+                'clear contents of tblrsu
+                tblrsU.Clear()
+                tblrsU.AcceptChanges()
+
+                Dim vConcStatus
+
+                Dim strFB As String
+                strFB = "ANALYTEID = " & ANALYTEID & " AND SAMPLETYPEID = '" & MATRIX & "'"
+
+                Dim rowsReassayReportNew() As DataRow = tblReassayReportNew.Select(strFB)
+
+                If rowsReassayReportNew.Length = 0 Then
+
+                    strM = "The analyte '" & strAnalyteDescription & "' has no reassayed samples."
+                    strM = strM & ChrW(10) & ChrW(10)
+                    strM = strM & "If you wish to skip this table, click 'Yes'."
+                    strM = strM & ChrW(10) & ChrW(10)
+                    strM = strM & "If you wish to include a placeholder table for this table, click 'No'."
+
+                    intR = MsgBox(strM, MsgBoxStyle.YesNo, "No samples...")
+                    If intR = 6 Then 'Yes
+                        GoTo next1
+                    Else
+                        boolDoPlaceHolderTemp = True
+                        boolPlaceHolderTemp = boolPlaceHolder
+                        boolPlaceHolder = True
+                        'insert page break
+                        Call InsertPageBreak(wd)
+                        Call PageSetup(wd, str1) 'L=Landscape, P=Portrait
+                        GoTo skipPlaceholder
+                    End If
+
+
+                End If
+
+                For Count2 = 1 To rowsReassayReportNew.Length
+
+                    var1 = rowsReassayReportNew(Count2 - 1).Item("DESIGNSUBJECTTAG")
+                    var1 = rowsReassayReportNew(Count2 - 1).Item("DESIGNSUBJECTTAG")
+
+                    var3 = rowsReassayReportNew(Count2 - 1).Item("ORIGINALVALUE")
+                    var4 = rowsReassayReportNew(Count2 - 1).Item("DESIGNSAMPLEID")
+                    var5 = rowsReassayReportNew(Count2 - 1).Item("TREATMENTID")
+                    var9 = NZ(rowsReassayReportNew(Count2 - 1).Item("DESIGNSUBJECTTREATMENTKEY"), "")
+                    var10 = NZ(rowsReassayReportNew(Count2 - 1).Item("DESIGNSAMPLEID"), "")
+                    var11 = NZ(rowsReassayReportNew(Count2 - 1).Item("RUNSAMPLESEQUENCENUMBER"), "")
+
+                    var12 = NZ(rowsReassayReportNew(Count2 - 1).Item("SPLITNUMBER"), "")
+                    var13 = NZ(rowsReassayReportNew(Count2 - 1).Item("TIMETEXT"), "")
+                    var14 = NZ(rowsReassayReportNew(Count2 - 1).Item("USERSAMPLEID"), "")
+
+                    var16 = NZ(rowsReassayReportNew(Count2 - 1).Item("YEAR"), "")
+                    var17 = NZ(rowsReassayReportNew(Count2 - 1).Item("MONTH"), "")
+                    var15 = NZ(rowsReassayReportNew(Count2 - 1).Item("WEEK"), "")
+
+                    var6 = NZ(rowsReassayReportNew(Count2 - 1).Item("ENDDAY"), "")
+                    var7 = NZ(rowsReassayReportNew(Count2 - 1).Item("ENDHOUR"), "")
+                    var8 = NZ(rowsReassayReportNew(Count2 - 1).Item("ENDMINUTE"), "")
+                    var18 = NZ(rowsReassayReportNew(Count2 - 1).Item("ENDSECOND"), "")
+
+                    var19 = NZ(rowsReassayReportNew(Count2 - 1).Item("STARTDAY"), "")
+                    var20 = NZ(rowsReassayReportNew(Count2 - 1).Item("STARTHOUR"), "")
+                    var21 = NZ(rowsReassayReportNew(Count2 - 1).Item("STARTMINUTE"), "")
+                    var22 = NZ(rowsReassayReportNew(Count2 - 1).Item("STARTSECOND"), "")
+
+                    var23 = NZ(rowsReassayReportNew(Count2 - 1).Item("RUNID"), "")
+                    var24 = NZ(rowsReassayReportNew(Count2 - 1).Item("TREATMENTEVENTID"), "")
+
+                    var25 = NZ(rowsReassayReportNew(Count2 - 1).Item("SAMPLINGTIMEID"), "")
+
+                    var26 = NZ(rowsReassayReportNew(Count2 - 1).Item("SUBJECTGROUPNAME"), "")
+                    var27 = NZ(rowsReassayReportNew(Count2 - 1).Item("VISITTEXT"), "")
+
+
+                    'RUNSAMPLESEQUENCENUMBER
+                    str1 = var1 & "_" & var5 & "_" & var24 & "_" & var16 & "_" & var17 & "_" & var15 & "_" & var6 & "_" & var7 & "_" & var8 & "_" & var18 & "_" & var19 & "_"
+                    str1 = str1 & var20 & "_" & var21 & "_" & var22 & "_" & var8
+
+                    str1 = var1 & "_" & var5 & "_" & var24 & "_" & var16 & "_" & var17 & "_" & var15 & "_" & var6 & "_" & var7 & "_" & var8 & "_" & var18 & "_" & var19 & "_"
+                    str1 = str1 & var20 & "_" & var21 & "_" & var22
+
+                    'str1 = var1 & "_" & var24 & "_" & var25
+
+                    'Debug.Print str1
+                    If Count2 = 1 Then
+
+                        Dim nRow As DataRow = tblrsU.NewRow
+
+                        nRow.Item("DESIGNSUBJECTTAG") = var1
+                        nRow.Item("ORIGINALVALUE") = var3
+                        nRow.Item("DESIGNSAMPLEID") = var4
+                        nRow.Item("UString") = str1
+                        nRow.Item("TREATMENTID") = var5
+                        nRow.Item("DESIGNSUBJECTTREATMENTKEY") = var9
+                        nRow.Item("MATRIX") = var10
+                        nRow.Item("RUNSAMPLESEQUENCENUMBER") = var11
+
+                        nRow.Item("SPLITNUMBER") = var12
+                        nRow.Item("TIMETEXT") = var13
+                        nRow.Item("USERSAMPLEID") = var14
+
+                        nRow.Item("YEAR") = var16
+                        nRow.Item("MONTH") = var17
+                        nRow.Item("WEEK") = var15
+
+                        nRow.Item("ENDDAY") = var6
+                        nRow.Item("ENDHOUR") = var7
+                        nRow.Item("ENDMINUTE") = var8
+                        nRow.Item("ENDSECOND") = var18
+
+                        nRow.Item("STARTDAY") = var19
+                        nRow.Item("STARTHOUR") = var20
+                        nRow.Item("STARTMINUTE") = var21
+                        nRow.Item("STARTSECOND") = var22
+
+                        nRow.Item("RUNID") = var23
+                        nRow.Item("TREATMENTEVENTID") = var24
+                        nRow.Item("SAMPLINGTIMEID") = var25
+
+                        nRow.Item("SUBJECTGROUPNAME") = var26
+                        nRow.Item("VISITTEXT") = var27
+
+                        tblrsU.Rows.Add(nRow)
+
+                    Else
+
+                        strF1 = "UString = '" & str1 & "'"
+                        Dim rowsrsU() As DataRow = tblrsU.Select(strF1)
+
+                        If rowsrsU.Length = 0 Then
+
+                            Dim nRow As DataRow = tblrsU.NewRow
+
+                            nRow.Item("DESIGNSUBJECTTAG") = var1
+                            nRow.Item("ORIGINALVALUE") = var3
+                            nRow.Item("DESIGNSAMPLEID") = var4
+                            nRow.Item("UString") = str1
+                            nRow.Item("TREATMENTID") = var5
+                            nRow.Item("DESIGNSUBJECTTREATMENTKEY") = var9
+                            nRow.Item("MATRIX") = var10
+                            nRow.Item("RUNSAMPLESEQUENCENUMBER") = var11
+
+                            nRow.Item("SPLITNUMBER") = var12
+                            nRow.Item("TIMETEXT") = var13
+                            nRow.Item("USERSAMPLEID") = var14
+
+                            nRow.Item("YEAR") = var16
+                            nRow.Item("MONTH") = var17
+                            nRow.Item("WEEK") = var15
+
+                            nRow.Item("ENDDAY") = var6
+                            nRow.Item("ENDHOUR") = var7
+                            nRow.Item("ENDMINUTE") = var8
+                            nRow.Item("ENDSECOND") = var18
+
+                            nRow.Item("STARTDAY") = var19
+                            nRow.Item("STARTHOUR") = var20
+                            nRow.Item("STARTMINUTE") = var21
+                            nRow.Item("STARTSECOND") = var22
+
+                            nRow.Item("RUNID") = var23
+                            nRow.Item("TREATMENTEVENTID") = var24
+                            nRow.Item("SAMPLINGTIMEID") = var25
+
+                            nRow.Item("SUBJECTGROUPNAME") = var26
+                            nRow.Item("VISITTEXT") = var27
+
+                            tblrsU.Rows.Add(nRow)
+
+                        End If
+
+                    End If
+
+
+                Next
+
+                ''debug
+                'var1 = ""
+                'For Count2 = 0 To tblrsU.Columns.Count - 1
+                '    var1 = var1 & ";" & tblrsU.Columns(Count2).ColumnName
+                'Next
+                'Console.WriteLine(var1)
+                'For Count3 = 0 To tblrsU.Rows.Count - 1
+                '    var1 = ""
+                '    For Count2 = 0 To tblrsU.Columns.Count - 1
+                '        var1 = var1 & ";" & tblrsU.Rows(Count3).Item(Count2)
+                '    Next
+                '    Console.WriteLine(var1)
+                'Next
+                'Console.WriteLine(" ")
+
+                Dim intU As Int32
+                intU = tblrsU.Rows.Count
+
+                'page setup according to configuration
+                str1 = dvDo.Item(intDo).Item("CHARPAGEORIENTATION")
+
+                'insert page break
+                Call InsertPageBreak(wd)
+                Call PageSetup(wd, str1) 'L=Landscape, P=Portrait
+
+                'determine number of columns and order of columns
+                tbl1 = tblReportTableHeaderConfig
+                strF = "id_tblStudies = " & id_tblStudies & " AND id_tblConfigReportTables = " & intTableID & " AND boolInclude = -1"
+                dr1 = tbl1.Select(strF, "intOrder ASC")
+                int1 = dr1.Length
+                ctCols = int1
+                '1=ColumnHeader, 2=Include(X), 3=Order, 4=ReportColumnHeader
+                'arrOrder
+                ' 1=ColumnLabel, 2=Order, 3=id_tblConfigReportTables, 4=UserLabel, 5=id_tblConfigHeaderLookup
+                tbl = tblConfigHeaderLookup
+                arrOrder.Clear(arrOrder, 0, arrOrder.Length)
+                For Count2 = 1 To ctCols
+                    arrOrder(2, Count2) = Count2 'dr1(Count2 - 1).Item("intOrder")
+                    arrOrder(3, Count2) = dr1(Count2 - 1).Item("id_tblConfigHeaderLookup")
+                    arrOrder(4, Count2) = dr1(Count2 - 1).Item("charUserLabel")
+                    str2 = dr1(Count2 - 1).Item("charUserLabel") 'just checking
+                    arrOrder(5, Count2) = dr1(Count2 - 1).Item("id_tblConfigReportTables")
+                    'find column label
+                    str1 = "id_tblConfigHeaderLookup = " & arrOrder(3, Count2) & " AND id_tblConfigReportTables = " & intTableID
+                    dr = tbl.Select(str1)
+                    arrOrder(1, Count2) = dr(0).Item("CHARCOLUMNLABEL")
+                    arrOrder(6, Count2) = dr(0).Item("CHARWATSONFIELD")
+                Next
+
+                Dim intCt As Short
+                intCt = 0
+
+                strFB = "ANALYTEID = " & ANALYTEID & " AND SAMPLETYPEID = '" & MATRIX & "'"
+                strS = "DESIGNSUBJECTTAG ASC, YEAR ASC, MONTH ASC, WEEK ASC, ENDDAY ASC, ENDHOUR ASC, ENDMINUTE ASC, ENDSECOND, RUNID ASC, RUNSAMPLESEQUENCENUMBER ASC"
+                Dim dv1 As System.Data.DataView = New DataView(tblReassayReportNew, strFB, strS, DataViewRowState.CurrentRows)
+
+                '20180622 LEE:
+                'don't know why this is so confusing
+                'just make unique tables
+                'ReassayReason
+                Dim tblRR As System.Data.DataTable = dv1.ToTable("a", True, "REASSAYREASON")
+                For Count2 = 1 To tblRR.Rows.Count
+                    intCt = intCt + 1
+                    '1=index, 2=Reason, 3=??
+                    If BOOLREASSAYREASLETTERS Then
+                        str1 = ChrW(64 + intCt)
+                        arrLegend(1, intCt) = str1 ' Count2 + 1 'intCt
+                    Else
+                        arrLegend(1, intCt) = intCt ' Count2 + 1 'intCt
+                    End If
+                    arrLegend(1, intCt) = intCt ' Count2 + 1 'intCt
+                    arrLegend(2, intCt) = tblRR.Rows(Count2 - 1).Item("REASSAYREASON")
+                    arrLegend(3, intCt) = False
+                    arrReasons(intCt) = tblRR.Rows(Count2 - 1).Item("REASSAYREASON")
+                    int1 = intCt
+                Next
+
+                ctReasons = intCt 'int2
+                ReDim Preserve arrReasons(ctReasons)
+
+
+                'ReportedConcReason
+                intCt = 0
+                Dim tblRCR As System.Data.DataTable = dv1.ToTable("a", True, "REASSAYCONCREASON")
+                For Count2 = 1 To tblRCR.Rows.Count
+
+                    intCt = intCt + 1
+                    '1=index, 2=Reason, 3=??
+                    If BOOLREASSAYREASLETTERS Then
+                        str1 = ChrW(64 + intCt)
+                        arrLegendC(1, intCt) = str1 ' Count2 + 1 'intCt
+                    Else
+                        arrLegendC(1, intCt) = intCt ' Count2 + 1 'intCt
+                    End If
+                    'arrLegendC(1, intCt) = intCt ' Count2 + 1 'intCt
+                    arrLegendC(2, intCt) = tblRCR.Rows(Count2 - 1).Item("REASSAYCONCREASON")
+                    arrLegendC(3, intCt) = False
+                    arrReasonsC(intCt) = tblRCR.Rows(Count2 - 1).Item("REASSAYCONCREASON")
+                Next
+
+                ctReasonsC = intCt 'int2
+                ReDim Preserve arrReasonsC(ctReasonsC)
+
+                Dim intTRows As Short
+                Dim rowsU() As DataRow
+
+                intTRows = 0
+                intTRows = intTRows + 1 'for table header
+                intTRows = intTRows + 1 'for blank row
+                intTRows = intTRows + intU
+                'intTRows = intTRows + intUGrps 'for unique groups
+                'intTRows = intTRows + intUSubj - 1 'for blank row between groups
+
+                'ctrsReassayed(1, Count2A) = intUGrps
+
+skipPlaceholder:
+
+                wrdselection = wd.Selection()
+
+                Try
+
+                    '20180913 LEE:
+                    Call IncrNextTableNumber(wd)
+
+                    If boolPlaceHolder Then
+                        .ActiveDocument.Tables.Add(Range:=wrdselection.Range, NumRows:=1, NumColumns:=1, DefaultTableBehavior:=Microsoft.Office.Interop.Word.WdDefaultTableBehavior.wdWord9TableBehavior, AutoFitBehavior:=Microsoft.Office.Interop.Word.WdAutoFitBehavior.wdAutoFitWindow)
+                    Else
+                        .ActiveDocument.Tables.Add(Range:=wrdselection.Range, NumRows:=intTRows, NumColumns:=ctCols, DefaultTableBehavior:=Microsoft.Office.Interop.Word.WdDefaultTableBehavior.wdWord9TableBehavior, AutoFitBehavior:=Microsoft.Office.Interop.Word.WdAutoFitBehavior.wdAutoFitWindow)
+                    End If
+
+                    .Selection.Tables.Item(1).Columns.PreferredWidth = Microsoft.Office.Interop.Word.WdPreferredWidthType.wdPreferredWidthPoints
+
+
+                    '****Start
+                    .Selection.Tables.Item(1).Select()
+
+                    Call SetCellPaddingZero(.Selection.Tables.Item(1))
+
+                    .Selection.ParagraphFormat.Alignment = Microsoft.Office.Interop.Word.WdParagraphAlignment.wdAlignParagraphCenter
+                    .Selection.Cells.VerticalAlignment = Microsoft.Office.Interop.Word.WdCellVerticalAlignment.wdCellAlignVerticalBottom
+                    removeBorderButLeaveTopAndBottom(wd)
+                    '.Selection.Font.Size = 11
+
+                    If boolPlaceHolder Then
+
+                        .Selection.Tables.Item(1).Select()
+                        .Selection.Borders.Item(Microsoft.Office.Interop.Word.WdBorderType.wdBorderTop).LineStyle = Microsoft.Office.Interop.Word.WdLineStyle.wdLineStyleNone
+                        .Selection.Borders.Item(Microsoft.Office.Interop.Word.WdBorderType.wdBorderBottom).LineStyle = Microsoft.Office.Interop.Word.WdLineStyle.wdLineStyleNone
+
+                        'strTName = strTName.Replace("[MATRIX]", strMatrix) 'Need to do this here for now
+                        '20160221 LEE: Made function to update. 
+                        strTName = UpdateAnalyteMatrix(strTName, strAnalyteDescription, strMatrix, False, 0, False)
+                        Call EnterTableNumber(wd, strTName, 3, strAnalyteDescription, strTempInfo, intTableID, 1, idTR)
+                        'var1 = dvDo(intDo).Item("CHARHEADINGTEXT") 'Then change it back
+                        'strTName = NZ(var1, "[NONE]")
+                        Call MoveOneCellDown(wd)
+
+                        .Selection.TypeParagraph()
+                        .Selection.TypeParagraph()
+
+                        'enter a table record in tblTableN
+                        'ctTableN = ctTableN + 1
+                        Dim dtblr1 As DataRow = tblTableN.NewRow
+                        dtblr1.BeginEdit()
+                        dtblr1.Item("TableNumber") = ctTableN
+                        dtblr1.Item("AnalyteName") = strAnalyteDescription
+                        dtblr1.Item("TableName") = strTNameO
+                        dtblr1.Item("TableID") = intTableID
+                        dtblr1.Item("CHARFCID") = charFCID
+                        dtblr1.Item("TableNameNew") = strTName
+                        tblTableN.Rows.Add(dtblr1)
+
+                        If boolDoPlaceHolderTemp Then
+                            boolPlaceHolder = boolPlaceHolderTemp
+                        End If
+
+                        GoTo next1
+
+                    End If
+
+                    .Selection.Tables.Item(1).Select()
+                    Call GlobalTableParaFormat(wd)
+                    '20171220 LEE: Do not set table size, use the style default table
+                    '.Selection.Font.Size = fontsize - 1
+                    .Selection.Tables.Item(1).Cell(1, 1).Select()
+
+                    'enter headings
+                    For Count4 = 1 To ctCols
+                        .Selection.Tables.Item(1).Cell(1, Count4).Select()
+                        var1 = arrOrder(1, Count4)
+                        var2 = arrOrder(4, Count4)
+                        Select Case var1
+                            Case "OriginalConc."
+                                var2 = var2 & ChrW(10) & "(" & strConcUnits & ")"
+                            Case "ReassayConc."
+                                var2 = var2 & ChrW(10) & "(" & strConcUnits & ")"
+                            Case "ReportedConc."
+                                var2 = var2 & ChrW(10) & "(" & strConcUnits & ")"
+                        End Select
+                        .Selection.Text = var2
+                    Next
+
+                    'border top and bottom of range
+                    .Selection.Tables.Item(1).Cell(1, 1).Select()
+                    '.Selection.MoveDown(Unit:=Microsoft.Office.Interop.Word.WdUnits.wdLine, Count:=1, Extend:=Microsoft.Office.Interop.Word.WdMovementType.wdExtend)
+                    .Selection.EndKey(Unit:=Microsoft.Office.Interop.Word.WdUnits.wdRow, Extend:=Microsoft.Office.Interop.Word.WdMovementType.wdExtend)
+                    .Selection.Borders.Item(Microsoft.Office.Interop.Word.WdBorderType.wdBorderTop).LineStyle = Microsoft.Office.Interop.Word.WdLineStyle.wdLineStyleSingle
+                    .Selection.Borders.Item(Microsoft.Office.Interop.Word.WdBorderType.wdBorderBottom).LineStyle = Microsoft.Office.Interop.Word.WdLineStyle.wdLineStyleSingle
+
+                    .Selection.Tables.Item(1).Cell(2, 1).Select()
+
+                    int8 = 2
+
+                    Dim rows1() As DataRow
+                    Dim rows2() As DataRow
+                    Dim rows3() As DataRow
+                    Dim rows4() As DataRow
+                    Dim Count7 As Short
+                    Dim rowsReps() As DataRow
+                    Dim intRowsReps As Short
+                    Dim intRowsO As Short
+                    Dim strNo As String
+                    Dim intRowsRepsN As Short
+
+                    Dim intCtLbl As Int32 = 0
+                    Dim maxCtLbl As Short = 25
+
+                    Dim intN As Int16 = 0
+
+                    Dim ctRows As Short = 0
+                    Dim strL As String
+
+                    Dim intRecs As Int32
+
+                    Dim intFRow As Int32
+                    intFRow = 1
+
+                    Dim intRunIDO As Int32
+                    Dim vConcO
+                    Dim vRunIDO
+                    Dim vRSSO
+                    Dim vReassayReason
+                    Dim vReassayConc
+                    Dim vReassayRunID
+                    Dim vReasonReported
+                    Dim vRR
+                    Dim vRCR
+                    Dim vConc
+                    Dim nConc
+                    Dim vRunID
+                    Dim vReportedConc
+
+                    Dim intAnalyteID As Int32
+
+                    Dim wStudyID As Int64
+
+                    Dim intRunSSeq As Int32
+                    Dim intAnalyteIndex As Int32
+                    Dim strSubject As String
+                    Dim strTreatmentID As String
+                    Dim strTreatmentDesc As String
+                    Dim strConcStatus As String
+                    Dim strCalFlag As String
+                    Dim strCalRange As String
+                    Dim numAliquotFactor As Single
+                    Dim numConcO As Single
+
+                    Dim YEAR
+                    Dim MONTH
+
+                    Dim arrRR()
+                    ReDim arrRR(50)
+                    Dim intRR As Int32
+                    intRR = 0
+
+                    Dim arrRCR()
+                    ReDim arrRCR(50)
+                    Dim intRCR As Int32
+                    intRCR = 0
+
+
+                    Dim DESIGNSUBJECTTREATMENTKEY
+                    Dim DESIGNSUBJECTID
+                    Dim SUBJECTGROUPID
+                    Dim TREATMENTID
+                    Dim TREATMENTDESC
+                    Dim SAMPLETYPESPLITKEY
+                    Dim ENDDAY ' As Single
+                    Dim ENDHOUR ' As Single
+                    Dim ENDMINUTE As Single
+                    Dim ANALYTEINDEX As Int32
+                    Dim RUNSAMPLESEQUENCENUMBER As Int32
+                    Dim DESIGNSAMPLEID As Int64
+                    Dim CONCENTRATION
+                    Dim CONCENTRATIONSTATUS
+                    Dim ALIQUOTFACTOR As Single
+                    Dim RUNID As Int32
+                    Dim CALIBRATIONRANGE
+                    Dim ORIGINALVALUE
+                    Dim rDESIGNSAMPLEID As Int64
+                    Dim uDESIGNSAMPLEID As Int64
+                    Dim DESIGNSUBJECTTAG As String
+
+                    Dim SPLITNUMBER As String
+                    Dim USERSAMPLEID As String 'Custom ID
+                    Dim TIMETEXT As String
+                    Dim WEEK
+                    Dim TREATMENTEVENTID
+                    Dim SAMPLINGTIMEID
+                    Dim VISITTEXT
+
+                    Dim GROUP
+
+                    Dim vH, vM, vT, vHS, vMS, VTS
+
+                    Dim NM
+                    Dim VEC
+
+                    Dim strORIGINALVALUE As String
+                    Dim LLOQ, ULOQ
+                    Dim boolFoundOConc As Boolean 'original conc
+                    Dim boolFoundRConc As Boolean 'Reassay conc
+                    Dim VV()
+
+                    Dim rows6() As DataRow
+
+                    strL = frmH.lblProgress.Text
+
+                    Try
+
+                        'need datarow for ReturnFilter
+                        Dim rowsUU() As DataRow = tblrsU.Select
+
+                        For Count6 = 0 To intU - 1
+
+                            If Count6 = intU - 1 Then
+                                var1 = var1
+                            End If
+
+                            intCtLbl = intCtLbl + 1
+                            If intCtLbl > maxCtLbl Then
+                                str1 = strL & ChrW(10) & "Processing Subject " & Count6 + 1 & " of " & intU & "..."
+                                'str1 = str1 & ChrW(10) & "Sample " & Count4 + 1 & " of " & intL & "..."
+                                frmH.lblProgress.Text = str1
+                                frmH.lblProgress.Refresh()
+                                intCtLbl = 0
+                            End If
+
+                            boolFoundOConc = False
+                            boolFoundRConc = False
+                            vReassayConc = ""
+                            vReportedConc = ""
+                            vReassayRunID = ""
+
+                            intRecs = intRecs + 1
+
+                            DESIGNSUBJECTTAG = tblrsU.Rows(Count6).Item("DESIGNSUBJECTTAG") ' arrUSub(1, Count1)
+                            strORIGINALVALUE = tblrsU.Rows(Count6).Item("ORIGINALVALUE") 'arrUSub(2, Count1)
+                            uDESIGNSAMPLEID = tblrsU.Rows(Count6).Item("DESIGNSAMPLEID") 'arrUSub(3, Count1)
+                            RUNID = tblrsU.Rows(Count6).Item("RUNID")
+                            YEAR = tblrsU.Rows(Count6).Item("Year")
+                            MONTH = tblrsU.Rows(Count6).Item("Month")
+                            GROUP = tblrsU.Rows(Count6).Item("SUBJECTGROUPNAME")
+                            VISITTEXT = tblrsU.Rows(Count6).Item("VISITTEXT")
+
+                            'use ANALYTEID and RUNID to get ANALYTEINDEX from rs6
+                            strF1 = "ANALYTEID = " & ANALYTEID & " AND RUNID = " & RUNID
+                            'rs6.Filter = ""
+                            'rs6.Filter = strF1
+                            rows6 = tblrs6.Select(strF1)
+                            ANALYTEINDEX = rows6(0).Item("ANALYTEINDEX")
+                            NM = rows6(0).Item("NM")
+                            VEC = rows6(0).Item("VEC")
+
+                            '*****ORIGINAL CONCENTRATION*****
+                            'first look for original conc and original runid
+                            'look in rs3 that has all injections
+
+                            strF2 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND ANALYTEINDEX = " & ANALYTEINDEX & " AND SAMPLETYPEID = '" & MATRIX & "'"
+                            strF3 = ReturnFilter(tblrsU, Count6, True)
+                            strF2 = strF2 & " AND " & strF3 & " AND ELIMINATEDFLAG <> 'Y'"
+                            'Debug.Print strF2
+
+                            rows3 = tblrs3.Select(strF2, "RUNID ASC") 'for rs1Return2
+                            int1 = rows3.Length 'debug
+                            'Console.WriteLine("Count6 = " & Count6 & ": " & strF2)
+                            'Console.WriteLine(" ")
+
+                            VV = rs3Return1(tblrs3, tblrs6, tblrsARA, ANALYTEID, ANALYTEINDEX, uDESIGNSAMPLEID, True, strF2, RUNID, strORIGINALVALUE)
+
+                            '1=intRunIDO, 2=vConcStatus, 3=boolFoundOConc, 4=vConc, 5=LLOQ, 6=ULOQ, 7=AliquotFactor, 8=nConc, 9=RUNSAMPLESEQUENCENUMBER
+                            intRunIDO = VV(1)
+                            vConcStatus = VV(2)
+                            boolFoundOConc = VV(3)
+                            vConcO = VV(4)
+                            vRSSO = VV(9)
+                            'SPLITNUMBER = VV(10)
+                            WEEK = VV(11)
+                            'record designsubjecttag
+                            DESIGNSUBJECTTAG = VV(12)
+
+                            '*****END ORIGINAL CONCENTRATION*****
+
+
+
+                            '***REPORTED CONCENTRATION****
+                            'now find reported Conc
+                            'vReportedConc = rs1Return(rs1, rs3, rs6, rsSRCC, DESIGNSUBJECTTAG, ORIGINALVALUE, DESIGNSAMPLEID, TREATMENTID, ENDDAY, ENDHOUR, DESIGNSUBJECTTREATMENTKEY, MATRIX, lsigfig, ANALYTEID, RUNSAMPLESEQUENCENUMBER, USERSAMPLEID, Count1)
+                            ''Function rs1Return1(rs1 As ADODB.Recordset, rs3 As ADODB.Recordset, rs6 As ADODB.Recordset, rsSRCC As ADODB.Recordset, DESIGNSUBJECTTAG, DESIGNSAMPLEID, MATRIX, ANALYTEID)
+                            'vReportedConc = rs1Return1(rs1, rs3, rs6, rsSRCC, DESIGNSUBJECTTAG, uDESIGNSAMPLEID, MATRIX, ANALYTEID)
+
+                            Dim VVV
+                            VVV = rs1Return2(tblrs1, tblrs3, rows3, tblrs6, tblrsSRCC, tblrsARA, tblrsSRMatrix, DESIGNSUBJECTTAG, uDESIGNSAMPLEID, MATRIX, ANALYTEID)
+                            '1=vConcReported, 2=TREATMENTID,3=SPLITNUMBER , 4=USERSAMPLEID ,5=TIMETEXT, 6=WEEK, 7=ENDDAY, 8=ENDHOUR, 9=ENDMINUTE, 10=DESIGNSAMPLEID
+
+
+                            vReportedConc = VVV(1)
+                            TREATMENTID = VVV(2)
+                            SPLITNUMBER = VVV(3)
+                            USERSAMPLEID = CStr(VVV(4))
+                            TIMETEXT = VVV(5)
+                            WEEK = VVV(6)
+                            ENDDAY = VVV(7)
+                            ENDHOUR = VVV(8)
+                            rDESIGNSAMPLEID = VVV(10)
+
+                            '***END REPORTED CONCENTRATION****
+
+
+
+                            '****REASSAYED CONCENTRATION AND REASONS*****
+
+                            'now find vReassayConc and vReassayRunID and Reason for Reassay and Reason for reported
+                            'becausersReassaySamples can have incorrect definitions of ORIGINALVALUE (Y is actually N and vice versa),
+                            'must retrieve all entries, then evaluate for original sample parameters later in the code
+                            'strF1 = strFB & " AND DESIGNSAMPLEID = " & uDESIGNSAMPLEID & " AND ORIGINALVALUE = 'N'"
+                            strF1 = strFB & " AND DESIGNSAMPLEID = " & uDESIGNSAMPLEID
+                            strS = "RUNID ASC, RUNSAMPLESEQUENCENUMBER ASC"
+                            Dim rowsRRN() As DataRow = tblReassayReportNew.Select(strF1, strS)
+
+                            Dim var10O
+                            Dim var11O
+
+                            Dim arrRRTemp()
+                            ReDim arrRRTemp(50)
+                            Dim intRRTemp As Int32
+                            intRRTemp = 0
+
+                            Dim arrRCRTemp()
+                            ReDim arrRCRTemp(50)
+                            Dim intRCRTemp As Int32
+                            intRCRTemp = 0
+
+                            intCt = 0
+                            For Count2 = 1 To rowsRRN.Length
+
+                                var10 = NZ(rowsRRN(Count2 - 1).Item("REASSAYREASON"), "")
+                                var11 = NZ(rowsRRN(Count2 - 1).Item("REASSAYCONCREASON"), "")
+                                '2
+                                ORIGINALVALUE = rowsRRN(Count2 - 1).Item("ORIGINALVALUE")
+                                DESIGNSAMPLEID = rowsRRN(Count2 - 1).Item("DESIGNSAMPLEID")
+                                RUNID = rowsRRN(Count2 - 1).Item("RUNID")
+                                RUNSAMPLESEQUENCENUMBER = rowsRRN(Count2 - 1).Item("RUNSAMPLESEQUENCENUMBER")
+                                TREATMENTID = NZ(rowsRRN(Count2 - 1).Item("TREATMENTID"), "NA")
+                                TREATMENTDESC = NZ(rowsRRN(Count2 - 1).Item("TREATMENTDESC"), "NA")
+                                'TREATMENTID = rowsrrn(Count2 - 1).item("TREATMENTEVENTID")
+
+                                var1 = NZ(rowsRRN(Count2 - 1).Item("CONCENTRATION"), "")
+                                var2 = NZ(rowsRRN(Count2 - 1).Item("ALIQUOTFACTOR"), "")
+                                var3 = NZ(rowsRRN(Count2 - 1).Item("CONCENTRATIONSTATUS"), "")
+                                var4 = NZ(rowsRRN(Count2 - 1).Item("CALIBRATIONRANGE"), "")
+                                var5 = NZ(rowsRRN(Count2 - 1).Item("CALIBRATIONRANGEFLAG"), "")
+
+                                var7 = NZ(rowsRRN(Count2 - 1).Item("RUNID"), "")
+
+                                var1 = var1
+                                '        If rsSRCC.RecordCount = 0 Then
+                                '        make sure sample is not the original reported
+                                'becausersReassaySamples can have incorrect definitions of ORIGINALVALUE (Y is actually N and vice versa),
+                                'must check to ensure value isn't a correct assessment of Y
+                                If RUNID = intRunIDO And vRSSO = RUNSAMPLESEQUENCENUMBER And uDESIGNSAMPLEID = DESIGNSAMPLEID Then
+                                    GoTo NEXTCOUNT2
+                                End If
+
+                                intCt = intCt + 1
+                                If intCt = 1 Then
+                                    var10O = var10
+                                    var11O = var11
+                                End If
+
+                                arrRRTemp(intCt) = var10
+                                arrRCRTemp(intCt) = var11
+
+
+                                'use ANALYTEID and RUNID to get ANALYTEINDEX from rs6
+                                strF1 = "ANALYTEID = " & ANALYTEID & " AND RUNID = " & RUNID
+                                rows6 = tblrs6.Select(strF1)
+                                'rs6.Filter = ""
+                                'rs6.Filter = strF1
+                                ANALYTEINDEX = rows6(0).Item("ANALYTEINDEX")
+                                NM = rows6(0).Item("NM")
+                                VEC = rows6(0).Item("VEC")
+
+                                strF2 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND ANALYTEINDEX = " & ANALYTEINDEX & " AND SAMPLETYPEID = '" & MATRIX & "' AND RUNID = " & RUNID & " AND RUNSAMPLESEQUENCENUMBER = " & RUNSAMPLESEQUENCENUMBER
+                                strF3 = ReturnFilter(rowsRRN, Count2 - 1, False)
+                                'strF2 = strF2 & " AND " & strF3 & " AND ELIMINATEDFLAG <> 'Y' AND RUNANALYTEREGRESSIONSTATUS <> 4"
+                                strF2 = strF2 & " AND " & strF3 & " AND ELIMINATEDFLAG <> 'Y'"
+
+                                'tblReassayReportNew.CONCENTRATION and ALIQUOTFACTOR are not consistent and sometimes inaccurate
+                                'get these values from rs3
+                                VV = rs3Return1(tblrs3, tblrs6, tblrsARA, ANALYTEID, ANALYTEINDEX, DESIGNSAMPLEID, True, strF2, RUNID, strORIGINALVALUE)
+                                '1=intRunIDO, 2=vConcStatus, 3=boolFoundOConc, 4=vConc, 5=LLOQ, 6=ULOQ
+                                vConcStatus = VV(2)
+                                If Len(vConcStatus) > 0 Then
+                                    var1 = var1
+                                End If
+
+                                LLOQ = VV(5)
+                                ULOQ = VV(6)
+                                vConc = VV(4) 'has already been corrected for aliquotfactor
+                                ALIQUOTFACTOR = VV(7)
+                                nConc = VV(8) 'uncorrected conc
+                                SPLITNUMBER = VV(10)
+                                'need to return uncorrected conc
+                                'var13 = vConc * ALIQUOTFACTOR 'back calculate
+
+                                var1 = var1
+
+                                Try
+                                    If Len(vConcStatus) = 0 Then
+
+                                        If IsNumeric(vConc) Then
+                                            'var8 = SigFigOrDecString(var1 / ALIQUOTFACTOR, lsigfig, False)
+                                            var8 = SigFigOrDecString(CDec(vConc), LSigFig, False)
+                                        Else
+                                            var8 = vConcStatus
+                                        End If
+
+                                        If IsNumeric(vConc) Then
+                                            If nConc < LLOQ Then
+                                                var6 = BQL() & "(<" & SigFigOrDecString(LLOQ / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                            ElseIf nConc > ULOQ Then
+                                                var6 = AQL() & "(>" & SigFigOrDecString(ULOQ / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                            Else
+                                                var6 = var8 ' Round(var8, "0.0")
+                                            End If
+                                        Else
+
+                                            If StrComp(var5, "NM", vbTextCompare) = 0 Or StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                                If Len(var4) = 0 Then
+                                                    var6 = BQL() & "(<" & SigFigOrDecString(LLOQ / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                                Else
+                                                    var6 = BQL() & "(<" & SigFigOrDecString(var4 / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                                End If
+
+                                            ElseIf StrComp(var5, "VEC", vbTextCompare) = 0 Or StrComp(vConcStatus, "VEC", vbTextCompare) = 0 Then
+                                                If Len(var4) = 0 Then
+                                                    var6 = AQL() & "(>" & SigFigOrDecString(ULOQ / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                                Else
+                                                    var6 = AQL() & "(>" & SigFigOrDecString(var4 / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                                End If
+
+                                            Else
+                                                var6 = vConcStatus
+                                            End If
+
+                                        End If
+
+                                    Else
+
+
+                                        If StrComp(var5, "NM", vbTextCompare) = 0 Or StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                            If Len(var4) = 0 Then
+                                                var6 = BQL() & "(<" & SigFigOrDecString(LLOQ / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                            Else
+                                                var6 = BQL() & "(<" & SigFigOrDecString(var4 / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                            End If
+
+                                        ElseIf StrComp(var5, "VEC", vbTextCompare) = 0 Or StrComp(vConcStatus, "VEC", vbTextCompare) = 0 Then
+                                            If Len(var4) = 0 Then
+                                                var6 = AQL() & "(>" & SigFigOrDecString(ULOQ / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                            Else
+                                                var6 = AQL() & "(>" & SigFigOrDecString(var4 / ALIQUOTFACTOR, LSigFig, False) & ")"
+                                            End If
+
+                                        Else
+                                            var6 = vConcStatus
+                                        End If
+
+                                    End If
+                                Catch ex As Exception
+                                    var1 = ex.Message
+                                    var1 = var1
+                                End Try
+
+
+
+                                If intCt = 1 Then
+                                    vReassayConc = var6
+                                    vReassayRunID = var7
+                                Else
+                                    vReassayConc = vReassayConc & strR & var6
+                                    vReassayRunID = vReassayRunID & strR & var7
+                                End If
+
+
+NEXTCOUNT2:
+
+                                'tblReassayReportNew.MoveNext()
+
+                            Next Count2
+
+                            var10 = var10O
+                            var11 = var11O
+
+                            For Count2 = 1 To intCt
+
+                                var10 = arrRRTemp(Count2)
+                                var11 = arrRCRTemp(Count2)
+
+                                'record legends
+                                If intRR = 0 Then
+                                    intRR = intRR + 1
+                                    arrRR(intRR) = var10
+                                    intRRTemp = intRR
+                                    vRR = intRR
+                                Else
+                                    boolHit = False
+                                    For Count3 = 1 To intRR
+                                        var1 = arrRR(Count3)
+                                        If StrComp(var1, var10, vbTextCompare) = 0 Then
+                                            boolHit = True
+                                            vRR = Count3
+                                            intRRTemp = Count3
+                                            Exit For
+                                        End If
+                                    Next Count3
+                                    If boolHit Then
+                                    Else
+                                        intRR = intRR + 1
+                                        arrRR(intRR) = var10
+                                        vRR = intRR
+                                        intRRTemp = intRR
+                                    End If
+                                End If
+
+
+                                If intRCR = 0 Then
+                                    intRCR = intRCR + 1
+                                    arrRCR(intRCR) = var11
+                                    vRCR = intRCR
+                                    intRCRTemp = intRCR
+                                Else
+                                    boolHit = False
+                                    For Count3 = 1 To intRCR
+                                        var1 = arrRCR(Count3)
+                                        If StrComp(var1, var11, vbTextCompare) = 0 Then
+                                            boolHit = True
+                                            vRCR = Count3
+                                            intRCRTemp = Count3
+                                            Exit For
+                                        End If
+                                    Next Count3
+                                    If boolHit Then
+                                    Else
+                                        intRCR = intRCR + 1
+                                        arrRCR(intRCR) = var11
+                                        vRCR = intRCR
+                                        intRCRTemp = intRCR
+                                    End If
+                                End If
+
+
+                            Next Count2
+
+                            Try
+                                For Count3 = 1 To ctCols
+                                    varE = ""
+                                    str6 = arrOrder(1, Count3)
+                                    Select Case str6
+                                        Case "Day"
+                                            'str1 = CStr(NZ(rows(Count4).Item("ENDDAY"), "NA")) ' 
+                                            str1 = ENDDAY ' CStr(NZ(rowsU(Count4).Item("ENDDAY"), 0)) '
+                                            strStartDay = CStr(NZ(tblrsU.Rows(Count6).Item("STARTDAY"), "")) '
+                                            'rowsRRN(Count2 - 1)?
+
+                                            If Len(strStartDay) = 0 Then
+                                                varE = str1
+                                            Else
+                                                varE = str1 & " to " & strStartDay
+                                            End If
+
+                                        Case "Custom ID"
+                                            Try
+                                                varE = USERSAMPLEID ' NZ(rowsU(Count4).Item("USERSAMPLEID"), "NA")
+                                            Catch ex As Exception
+                                                varE = varE 'debug
+                                            End Try
+
+
+                                        Case "Orig Watson ID"
+                                            'str1 = CStr(rowsU(Count4).Item("RUNID"))
+                                            ''20180226 LEE:
+                                            ''No, should be rows1
+                                            'If rows1.Length = 0 Then
+                                            '    str1 = "NA"
+                                            '    boolNA = True
+                                            'Else
+                                            '    str1 = CStr(rows1(0).Item("RUNID"))
+                                            'End If
+
+                                            'varE = str1
+
+                                            varE = CStr(intRunIDO)
+
+                                        Case "Reason for Reassay"
+
+                                            varE = vRR
+                                            boolShowReasReason = True
+
+                                        Case "Reassd Watson ID"
+
+                                            varE = vReassayRunID
+
+                                        Case "Subject"
+                                            'varE = strSubj
+                                            varE = DESIGNSUBJECTTAG
+
+                                        Case "Time"
+
+
+                                            'these are endhour and endminutes
+
+                                            var1 = NZ(ENDHOUR, 0) 'NZ(rowsU(Count4).Item("ENDHOUR"), 0)
+                                            vH = RoundToDecimal(var1, 3)
+                                            var2 = NZ(ENDMINUTE, 0) ' NZ(rowsU(Count4).Item("ENDMINUTE"), 0)
+                                            vM = RoundToDecimal(var2 / 60, 3)
+
+                                            vT = vH + vM
+                                            str1 = vT & "h"
+
+                                            varE = str1
+                                            varE = varE 'debug
+
+                                            'look for StartHour and StartMinute
+                                            strStartHour = CStr(NZ(tblrsU.Rows(Count6).Item("STARTHOUR"), "")) '
+                                            strStartMinute = CStr(NZ(tblrsU.Rows(Count6).Item("STARTMINUTE"), "")) '
+
+                                            If Len(strStartHour) <> 0 Or Len(strStartMinute) <> 0 Then
+                                                var1 = NZ(strStartHour, 0)
+                                                vHS = RoundToDecimal(var1, 3)
+                                                var2 = NZ(strStartMinute, 0)
+                                                vMS = RoundToDecimal(var2 / 60, 3)
+
+                                                VTS = vHS + vMS
+                                                str1 = VTS & "h"
+
+                                                varE = str1 & " to " & varE
+
+                                            End If
+
+
+                                        Case "Treatment"
+
+                                            varE = TREATMENTDESC
+
+                                        Case "Matrix"
+
+                                            varE = NZ(MATRIX, "NA")
+
+                                        Case "Reason for Reported Conc."
+
+                                            boolShowConcReason = True
+
+                                            varE = vRCR
+
+                                        Case "Reported Watson Run ID"
+
+                                            varE = ""
+
+                                        Case "OriginalConc."
+
+                                            If IsNumeric(vConcO) Then
+                                                varE = SigFigOrDecString(CDec(vConcO), LSigFig, False)
+                                            Else
+                                                varE = vConcO
+                                            End If
+
+
+                                        Case "ReassayConc."
+
+                                            varE = vReassayConc
+
+                                        Case "ReportedConc."
+
+                                            If IsNumeric(vReportedConc) Then
+                                                varE = SigFigOrDecString(CDec(vReportedConc), LSigFig, False)
+                                            Else
+                                                varE = vReportedConc
+                                            End If
+
+                                        Case "Visit Text"
+                                            varE = NZ(VISITTEXT, "")
+                                        Case "Year"
+                                            varE = NZ(YEAR, "")
+                                        Case "Month"
+                                            varE = NZ(MONTH, "")
+                                        Case "Week"
+                                            varE = NZ(WEEK, "")
+                                        Case "Time Text"
+                                            varE = NZ(TIMETEXT, "")
+
+                                        Case "Group"
+                                            varE = NZ(GROUP, "")
+
+                                    End Select
+
+                                    If Count3 = 1 Then
+                                        strPasteT = varE
+                                    Else
+                                        strPasteT = strPasteT & ChrW(9) & varE
+                                    End If
+
+                                Next Count3
+
+                                Try
+                                    If Count6 = 0 Then
+                                        strPaste = strPasteT
+                                    Else
+                                        strPaste = strPaste & ChrW(10) & strPasteT
+                                    End If
+
+                                Catch ex As Exception
+                                    var4 = ex.Message
+                                    var4 = var4
+                                End Try
+
+                            Catch ex As Exception
+                                var1 = ex.Message
+                                var1 = var1
+                            End Try
+
+                            ctRows = ctRows + 1
+
+                            var1 = var1
+
+                            'sht.Cells(intRecs, 1) = DESIGNSUBJECTTAG
+                            'sht.Cells(intRecs, 2) = TREATMENTID
+                            'sht.Cells(intRecs, 3) = USERSAMPLEID
+                            'sht.Cells(intRecs, 4) = SPLITNUMBER
+
+                            'sht.Cells(intRecs, 5) = TIMETEXT
+                            'sht.Cells(intRecs, 6) = WEEK
+
+
+                            'sht.Cells(intRecs, 7) = ENDDAY
+                            'sht.Cells(intRecs, 8) = NZ(ENDHOUR, 0)
+                            'sht.Cells(intRecs, 9) = SigFigOrDecString(vConcO, lsigfig, False)
+                            'sht.Cells(intRecs, 10) = intRunIDO
+
+                            'sht.Cells(intRecs, 11) = vRR
+                            'sht.Cells(intRecs, 12) = vReassayConc
+                            'sht.Cells(intRecs, 13) = vReassayRunID
+                            'sht.Cells(intRecs, 14) = SigFigOrDecString(vReportedConc, lsigfig, False) 'vReportedConc
+                            'sht.Cells(intRecs, 15) = vRCR
+                            'sht.Cells(intRecs, 16) = MATRIX
+
+                            'rsU.MoveNext()
+
+
+                        Next Count6
+
+                        .Selection.Tables.Item(1).Cell(3, 1).Select()
+
+                        If IsNothing(strPaste) Or Len(strPaste) = 0 Then
+                        Else
+
+                            Dim rng1 As Word.Range
+                            Dim tblW As Word.Table
+
+                            tblW = .Selection.Tables.Item(1)
+
+                            'send strpaste to clipboard
+                            Try
+                                Clipboard.Clear()
+                            Catch ex As Exception
+
+                            End Try
+
+
+                            'give time to set
+                            Pause(0.1)
+                            Try
+                                Clipboard.SetText(strPaste, TextDataFormat.Text)
+                                'give time to set
+                                Pause(0.1)
+                            Catch ex As Exception
+                                'MsgBox("SetText: " & ex.Message)
+                            End Try
+
+                            boolV = wd.Visible
+                            wd.WindowState = Word.WdWindowState.wdWindowStateMinimize
+                            wd.Visible = True
+
+                            'select appropriate rows
+                            Try
+                                rng1 = wd.ActiveDocument.Range(Start:=tblW.Cell(3, 1).Range.Start, End:=tblW.Cell(ctRows + 3 - 1, ctCols).Range.End)
+                                rng1.Select()
+                            Catch ex As Exception
+                                .Selection.SelectRow()
+                                .Selection.MoveDown(Unit:=Microsoft.Office.Interop.Word.WdUnits.wdLine, Count:=ctRows - 1, Extend:=True)
+                                var1 = ex.Message
+                                var1 = var1
+                            End Try
+
+                            Pause(0.1)
+
+                            Try
+                                .Selection.PasteAndFormat(Microsoft.Office.Interop.Word.WdRecoveryType.wdPasteDefault)
+                            Catch ex As Exception
+                                'MsgBox("Paste: " & ex.Message)
+                                var1 = var1
+                            End Try
+
+                            'Pause(0.5)
+
+                            wd.Visible = boolV
+                            ''' 
+                            'the paste action removes the range object and any table formatting, must reset it
+                            Call GlobalTableParaFormat(wd)
+                            Try
+                                rng1 = wd.ActiveDocument.Range(Start:=tblW.Cell(3, 1).Range.Start, End:=tblW.Cell(ctRows + 3 - 1, ctCols).Range.End)
+                                rng1.Select()
+                            Catch ex As Exception
+                                .Selection.SelectRow()
+                                .Selection.MoveDown(Unit:=Microsoft.Office.Interop.Word.WdUnits.wdLine, Count:=ctRows - 1, Extend:=True)
+                                var1 = ex.Message
+                                var1 = var1
+                            End Try
+
+                            'the paste action removes paragraph formatting, must replace it
+                            'make cell alignment wdCellAlignVerticalTop
+                            '.Selection.EndKey(Unit:=Microsoft.Office.Interop.Word.WdUnits.wdRow, Extend:=True)
+                            '.Selection.EndKey(Unit:=Microsoft.Office.Interop.Word.WdUnits.wdColumn, Extend:=True)
+                            .Selection.ParagraphFormat.Alignment = Microsoft.Office.Interop.Word.WdParagraphAlignment.wdAlignParagraphCenter
+                            .Selection.Cells.VerticalAlignment = Microsoft.Office.Interop.Word.WdCellVerticalAlignment.wdCellAlignVerticalTop 'wdCellAlignVerticalBottom
+
+                            'replace '_xyz_' with chrw(11)
+                            With rng1.Find
+                                .ClearFormatting()
+                                .Text = strR
+                                .Replacement.ClearFormatting()
+                                '.Replacement.Text = "," & ChrW(11)
+                                .Replacement.Text = ChrW(11)
+                                .Execute(Replace:=Microsoft.Office.Interop.Word.WdReplace.wdReplaceAll, Forward:=True, Wrap:=Microsoft.Office.Interop.Word.WdFindWrap.wdFindContinue)
+                            End With
+
+                            'replace '_abc_' with chrw(11)
+                            With rng1.Find
+                                .ClearFormatting()
+                                .Text = strR1
+                                .Replacement.ClearFormatting()
+                                '.Replacement.Text = "," & ChrW(11)
+                                .Replacement.Text = ChrW(11)
+                                .Execute(Replace:=Microsoft.Office.Interop.Word.WdReplace.wdReplaceAll, Forward:=True, Wrap:=Microsoft.Office.Interop.Word.WdFindWrap.wdFindContinue)
+                            End With
+                        End If
+
+
+                        '*****
+
+                        'delete extra rows
+                        'remove unused rows
+                        Call RemoveRows(wd, 1)
+
+                        ctrsReassayed(1, Count2A) = intN
+
+                        Dim wtbl1 As Word.Table
+                        wtbl1 = .Selection.Tables.Item(1)
+
+
+                        'record position
+                        'strTName = strTName.Replace("[MATRIX]", strMatrix) 'Need to do this here for now
+                        '20160221 LEE: Made function to update. 
+                        strTName = UpdateAnalyteMatrix(strTName, strAnalyteDescription, strMatrix, False, 0, False)
+                        Call EnterTableNumber(wd, strTName, 3, strAnalyteDescription, strTempInfo, intTableID, 1, idTR)
+                        var1 = dvDo(intDo).Item("CHARHEADINGTEXT") 'Then change it back
+                        strTName = NZ(var1, "[NONE]")
+
+                        'enter a table record in tblTableN
+                        'ctTableN = ctTableN + 1
+                        Dim dtblr As DataRow = tblTableN.NewRow
+                        dtblr.BeginEdit()
+                        dtblr.Item("TableNumber") = ctTableN
+                        dtblr.Item("AnalyteName") = strAnalyteDescription 'arrAnalytes(1, Count2A)
+                        dtblr.Item("TableName") = strTNameO
+                        dtblr.Item("TableID") = intTableID
+                        dtblr.Item("CHARFCID") = charFCID
+                        dtblr.Item("TableNameNew") = strTName
+                        tblTableN.Rows.Add(dtblr)
+
+
+                        posrow1 = .Selection.Tables.Item(1).Rows.Count + 2
+
+                        'enter arrlegenD for reasons
+                        int1 = 1
+                        If int1 > UBound(arrLegend, 2) Then
+                            ReDim Preserve arrLegend(UBound(arrLegend, 1), UBound(arrLegend, 2) + 10)
+                        End If
+                        arrLegend(1, int1) = ""
+                        arrLegend(2, int1) = ""
+                        arrLegend(3, int1) = False
+
+                        '20180328 LEE: Need to account for boolShowReasReason
+                        If boolShowReasReason Then
+
+                            int1 = int1 + 1
+                            If int1 > UBound(arrLegend, 2) Then
+                                ReDim Preserve arrLegend(UBound(arrLegend, 1), UBound(arrLegend, 2) + 10)
+                            End If
+                            arrLegend(1, int1) = ""
+                            arrLegend(2, int1) = "REASON FOR REASSAY:"
+                            arrLegend(3, int1) = False
+                            For Count4 = 1 To ctReasons
+                                int1 = int1 + 1
+                                If int1 > UBound(arrLegend, 2) Then
+                                    ReDim Preserve arrLegend(UBound(arrLegend, 1), UBound(arrLegend, 2) + 10)
+                                End If
+                                arrLegend(1, int1) = Count4
+                                var1 = arrReasons(Count4)
+                                If StrComp(var1, "AQL", CompareMethod.Text) = 0 Then
+                                    arrReasons(Count4) = "Above Quantification Limit (AQL)"
+                                ElseIf StrComp(var1, "ALQ", CompareMethod.Text) = 0 Then
+                                    arrReasons(Count4) = "Above Limit of Quantification (ALQ)"
+                                ElseIf StrComp(var1, "BQL", CompareMethod.Text) = 0 Then
+                                    arrReasons(Count4) = "Below Quantification Limit (BQL)"
+                                ElseIf StrComp(var1, "BLQ", CompareMethod.Text) = 0 Then
+                                    arrReasons(Count4) = "Below Limit of Quantification Limit (BLQ)"
+                                End If
+                                arrLegend(2, int1) = arrReasons(Count4)
+                                arrLegend(3, int1) = False
+                            Next
+
+                        End If
+
+                        If boolShowConcReason Then
+
+                            If boolShowReasReason Then
+                                int1 = int1 + 1
+                                If int1 > UBound(arrLegend, 2) Then
+                                    ReDim Preserve arrLegend(UBound(arrLegend, 1), UBound(arrLegend, 2) + 10)
+                                End If
+                                arrLegend(1, int1) = ""
+                                arrLegend(2, int1) = ""
+                                arrLegend(3, int1) = False
+                            End If
+
+                            int1 = int1 + 1
+                            If int1 > UBound(arrLegend, 2) Then
+                                ReDim Preserve arrLegend(UBound(arrLegend, 1), UBound(arrLegend, 2) + 10)
+                            End If
+                            arrLegend(1, int1) = ""
+                            arrLegend(2, int1) = "REASON FOR REPORTED CONCENTRATION:"
+                            arrLegend(3, int1) = False
+                            For Count4 = 1 To ctReasonsC
+                                int1 = int1 + 1
+                                If int1 > UBound(arrLegend, 2) Then
+                                    ReDim Preserve arrLegend(UBound(arrLegend, 1), UBound(arrLegend, 2) + 10)
+                                End If
+                                var1 = arrLegendC(1, Count4) 'debug
+                                arrLegend(1, int1) = arrLegendC(1, Count4)
+                                arrLegend(2, int1) = arrLegendC(2, Count4)
+                                arrLegend(3, int1) = False
+                            Next
+
+                            ReDim Preserve arrLegend(4, int1)
+
+                        End If
+
+                        str1 = frmH.lblProgress.Text
+
+                        wtbl1.Select()
+
+                        Dim boolOld As Boolean = True
+
+                        boolOld = False
+
+                        Dim ctLegends As Short = int1
+
+                        '*****
+
+
+
+                        '*****
+
+                        'autofit table
+                        '20180201 LEE: Make boolVis TRUE
+                        'Call AutoFitTable(wd, True)
+
+                        '20180722 LEE:
+                        'table entries aren't autofitting
+                        'try new funtion AutoFitTableLong that waits 2 sec between fitting
+                        Call AutoFitTableLong(wd, True)
+
+                        ''20180722 LEE:
+                        ''Like Recovery, 2nd table may not wrap properly
+                        ''make doc vis, then wait five seconds
+                        'Dim boolVis As Boolean = wd.Visible
+                        'wd.Visible = True
+                        'Pause(5)
+
+                        'leave doc visible
+
+
+                        strM = "Finalizing " & strTName & "..."
+                        strM1 = strM & ChrW(10) & "Table " & intTCur & " of " & intTTot & " tables..."
+                        str1 = strM1
+
+                        frmH.lblProgress.Text = strM1
+                        frmH.Refresh()
+
+                        'tttt
+                        '20160107 Larry: Call SplitTable, but don't add legend. Wait till end since legend can be very large.
+
+                        '20180722 LEE:
+                        'ignore boolNA and boolNR
+                        'any definitions will come from Watson
+                        'boolNA = False
+                        'If boolNA Then
+                        '    ctLegend1 = ctLegend1 + 1
+                        '    arrLegend1(1, ctLegend1) = "NA"
+                        '    arrLegend1(2, ctLegend1) = "Not Applicable"
+                        '    arrLegend1(3, ctLegend1) = False
+                        '    arrLegend1(4, ctLegend1) = False
+                        'End If
+
+                        'boolNR = False
+                        'If boolNR Then
+                        '    ctLegend1 = ctLegend1 + 1
+                        '    arrLegend1(1, ctLegend1) = "NR"
+                        '    arrLegend1(2, ctLegend1) = "Not Reportable"
+                        '    arrLegend1(3, ctLegend1) = False
+                        '    arrLegend1(4, ctLegend1) = False
+                        'End If
+
+                        ctLegend1 = ctLegend1 + 1
+
+                        arrLegend1(1, ctLegend1) = BQL()
+
+                        '20180722 LEE:
+                        'Dont allow this anymore
+                        boolBQLLEGEND = False
+
+                        If boolBQLLEGEND Then
+                            If boolLUseSigFigs Then
+                                arrLegend1(2, ctLegend1) = BQLVerbose() & " (" & DisplayNum(SigFigOrDec(LLOQ / ALIQUOTFACTOR, LSigFig, False), LSigFig, False) & " " & strConcUnits & ")"
+                            Else
+                                arrLegend1(2, ctLegend1) = BQLVerbose() & " (" & Format(SigFigOrDec(LLOQ, LSigFig / ALIQUOTFACTOR, False), GetRegrDecStr(LSigFig)) & " " & strConcUnits & ")"
+                            End If
+                        Else
+                            arrLegend1(2, ctLegend1) = BQLVerbose()
+                        End If
+
+                        arrLegend1(3, ctLegend1) = False
+                        arrLegend1(4, ctLegend1) = False
+
+                        ctLegend1 = ctLegend1 + 1
+
+                        arrLegend1(1, ctLegend1) = AQL()
+
+                        If boolBQLLEGEND Then
+                            If boolLUseSigFigs Then
+                                arrLegend1(2, ctLegend1) = AQLVerbose() & " (" & DisplayNum(SigFigOrDec(ULOQ / ALIQUOTFACTOR, LSigFig, False), LSigFig, False) & " " & strConcUnits & ")"
+                            Else
+                                arrLegend1(2, ctLegend1) = AQLVerbose() & " (" & Format(SigFigOrDec(ULOQ / ALIQUOTFACTOR, LSigFig, False), GetRegrDecStr(LSigFig)) & " " & strConcUnits & ")"
+                            End If
+                        Else
+                            arrLegend1(2, ctLegend1) = AQLVerbose()
+                        End If
+
+                        arrLegend1(3, ctLegend1) = False
+                        arrLegend1(4, ctLegend1) = False
+
+                        ReDim Preserve arrLegend1(4, ctLegend1)
+
+                        'Call SplitTable(wd, 2, ctLegend, arrLegend, str1, False, ctLegend + 1, False, False, False, intTableID)
+
+                        Call SplitTable(wd, 2, ctLegend1, arrLegend1, str1, False, int1 + 1, False, False, False, intTableID)
+
+
+                        'autofit table
+                        Call AutoFitTableLong(wd, True)
+
+                        'record posrow2
+                        posrow2 = .Selection.Tables.Item(1).Rows.Count
+                        int1 = .Selection.Tables.Item(1).Columns.Count
+
+
+                        If (boolShowConcReason Or boolShowReasReason) And boolOld = False Then
+
+                            Dim myTable As Microsoft.Office.Interop.Word.Table
+                            Dim myRange As Microsoft.Office.Interop.Word.Range
+                            Dim intRows As Short
+
+                            myTable = .Selection.Tables.Item(1)
+
+                            intRows = myTable.Rows.Count
+
+                            myTable.Cell(intRows, 1).Select()
+                            int8 = intRows
+
+                            'insert below ctReasonsC + 2
+                            .Selection.InsertRowsBelow(ctLegends)
+
+                            'at this point, all inserted rows are selected
+                            'if line space after is > 3, then reduce it to three
+                            Dim rngI As Word.Range
+                            rngI = .Selection.Range
+                            var1 = rngI.ParagraphFormat.SpaceAfter
+                            If var1 > 3 Then
+                                rngI.ParagraphFormat.SpaceAfter = 3
+                            End If
+
+                            'clear borders
+                            .Selection.Borders.Enable = False
+
+                            'ensure the last line has a border
+                            myTable.Cell(int8, 1).Select()
+                            .Selection.SelectRow()
+
+                            Dim intC As Short
+                            intC = .Selection.Cells.Count
+                            If intC = 1 Then
+                            Else
+                                .Selection.Borders.Item(Microsoft.Office.Interop.Word.WdBorderType.wdBorderBottom).LineStyle = Microsoft.Office.Interop.Word.WdLineStyle.wdLineStyleSingle
+                            End If
+
+                            For Count2 = 1 To ctLegends
+                                myTable.Cell(int8 + Count2, 1).Select()
+                                .Selection.SelectRow()
+                                Try
+                                    .Selection.Cells.Merge()
+                                Catch ex As Exception
+
+                                End Try
+
+                                'set tabs
+                                Try
+                                    .Selection.ParagraphFormat.Alignment = Microsoft.Office.Interop.Word.WdParagraphAlignment.wdAlignParagraphLeft
+                                    .Selection.Cells.VerticalAlignment = Microsoft.Office.Interop.Word.WdCellVerticalAlignment.wdCellAlignVerticalBottom
+                                    With .Selection.ParagraphFormat
+                                        .LeftIndent = 28 'InchesToPoints(0.38)
+                                        .SpaceBeforeAuto = False
+                                        .SpaceAfterAuto = False
+                                    End With
+                                    With .Selection.ParagraphFormat
+                                        .SpaceBeforeAuto = False
+                                        .SpaceAfterAuto = False
+                                        .FirstLineIndent = -28 'InchesToPoints(-0.38)
+                                    End With
+                                    .Selection.ParagraphFormat.TabStops.Add(Position:=28, _
+                                        Alignment:=Microsoft.Office.Interop.Word.WdTabAlignment.wdAlignTabLeft, Leader:=Microsoft.Office.Interop.Word.WdTabLeader.wdTabLeaderSpaces)
+                                Catch ex As Exception
+
+                                End Try
+                            Next
+
+                            myTable.Cell(int8, 1).Select()
+
+                            For Count2 = 1 To ctLegends
+
+                                int8 = int8 + 1
+                                myTable.Cell(int8, 1).Select()
+                                'Herehere
+
+                                var1 = arrLegend(1, Count2)
+                                var1 = Replace(CStr(var1), "-", NBH, 1, -1, vbTextCompare)
+                                If arrLegend(3, Count2) Then
+                                    .Selection.Font.Color = Microsoft.Office.Interop.Word.WdColor.wdColorAutomatic
+                                    .Selection.Font.Bold = False
+                                    typeInSuperscript(wd, CStr(var1))
+                                Else
+                                    .Selection.Font.Color = Microsoft.Office.Interop.Word.WdColor.wdColorAutomatic
+                                    .Selection.Font.Bold = False
+                                    .Selection.TypeText(Text:=CStr(var1))
+                                End If
+                                If Len(var1) = 0 Then
+                                Else
+                                    .Selection.TypeText(Text:=vbTab)
+                                    .Selection.TypeText(Text:="=")
+                                    .Selection.TypeText(Text:=vbTab)
+                                End If
+                                var2 = arrLegend(2, Count2)
+                                var2 = Replace(CStr(var2), "-", NBH, 1, -1, vbTextCompare)
+                                '                var2 = Replace(CStr(var2), "-", NBH, 1, -1, CompareMethod.Text)
+                                .Selection.TypeText(Text:=CStr(var2))
+
+                            Next
+
+                        End If
+
+                        '20180722 LEE:
+                        wd.Visible = boolV
+
+                        Call MoveOneCellDown(wd)
+
+                        Call InsertLegend(wd, intTableID, idTR, False, 1)
+
+                        var1 = var1 'debug
+
+                    Catch ex As Exception
+                        var1 = ex.Message
+                        var1 = var1
+                    End Try
+
+                Catch ex As Exception
+                    str1 = "There was a problem preparing table:"
+                    str1 = strM1 & ChrW(10) & ChrW(10) & str1
+                    str1 = str1 & ChrW(10) & ChrW(10)
+                    str1 = str1 & ex.Message
+                    MsgBox(str1, vbInformation, "Problem...")
+                End Try
+
+                var1 = var1
+
+                '***End New Logic 1
+
+next1:
+            Next Count2A 'this is analyte
+
+
+end1:
+
+            daDoPr.Dispose()
+
+
+        End With
+
+
+
+    End Sub
+
+
+    Sub LoadarrTP()
+
+        intTPLabel = 13
+
+        ReDim arrTPLabel(2, intTPLabel)
+
+        'if item is non-numeric,
+        'make (2,n) = STRING
+        arrTPLabel(1, 1) = "YEAR"
+        arrTPLabel(1, 2) = "MONTH"
+        arrTPLabel(1, 3) = "WEEK"
+        arrTPLabel(1, 4) = "STARTDAY"
+        arrTPLabel(1, 5) = "STARTHOUR"
+        arrTPLabel(1, 6) = "STARTMINUTE"
+        arrTPLabel(1, 7) = "STARTSECOND"
+        arrTPLabel(1, 8) = "ENDDAY"
+        arrTPLabel(1, 9) = "ENDHOUR"
+        arrTPLabel(1, 10) = "ENDMINUTE"
+        arrTPLabel(1, 11) = "ENDSECOND"
+        arrTPLabel(1, 12) = "TREATMENTEVENTID"
+        arrTPLabel(1, 13) = "TREATMENTID"
+        arrTPLabel(2, 13) = "STRING"
+        'arrTPLabel(1, 14) = "SAMPLINGTIMEID"
+
+        ReDim arrTP(2, 500)
+
+
+    End Sub
+
+
+    Function ReturnFilter(rsX, intRow, boolTable) As String
+
+        ReturnFilter = ""
+
+        Dim int1 As Integer
+        Dim strF1 As String
+        Dim Count1 As Integer
+        Dim var1, var2, var3, var4
+
+        ''load original rs3 values
+        'int1 = 0
+        'For Count1 = 1 To intTPLabel
+        '
+        '    var1 = arrTPLabel(Count1)
+        '    var2 = NZ(rsX.Fields(var1).Value, "")
+        '    If Len(var2) = 0 Then
+        '    Else
+        '        int1 = int1 + 1
+        '        If int1 = 1 Then
+        '            strF1 = var1 & " = " & var2
+        '        Else
+        '            strF1 = strF1 & " AND " & var1 & " = " & var2
+        '        End If
+        '    End If
+        '
+        'Next Count1
+
+        'load original rs3 values
+        int1 = 0
+        For Count1 = 1 To intTPLabel
+
+            var1 = arrTPLabel(1, Count1)
+            var3 = NZ(arrTPLabel(2, Count1), "")
+            'var2 = rsX.Fields(var1).Value
+            If boolTable Then
+                var2 = NZ(rsX.rows(intRow).Item(var1), "")
+            Else
+                var2 = NZ(rsX(intRow).Item(var1), "")
+            End If
+
+            If StrComp(var3, "STRING", vbTextCompare) = 0 Then
+                If Len(var2) = 0 Then
+                    int1 = int1 + 1
+                    If int1 = 1 Then
+                        'strF1 = var1 & " = NULL"
+                        strF1 = var1 & " IS NULL"
+                    Else
+                        'strF1 = strF1 & " AND " & var1 & " = NULL"
+                        strF1 = strF1 & " AND " & var1 & " IS NULL"
+                    End If
+                Else
+                    int1 = int1 + 1
+                    If int1 = 1 Then
+                        strF1 = var1 & " = '" & var2 & "'"
+                    Else
+                        strF1 = strF1 & " AND " & var1 & " = '" & var2 & "'"
+                    End If
+                End If
+            Else
+                If Len(var2) = 0 Then
+                    int1 = int1 + 1
+                    If int1 = 1 Then
+                        'strF1 = var1 & " = NULL"
+                        strF1 = var1 & " IS NULL"
+                    Else
+                        'strF1 = strF1 & " AND " & var1 & " = NULL"
+                        strF1 = strF1 & " AND " & var1 & " IS NULL"
+                    End If
+                Else
+                    int1 = int1 + 1
+                    If int1 = 1 Then
+                        strF1 = var1 & " = " & var2
+                    Else
+                        strF1 = strF1 & " AND " & var1 & " = " & var2
+                    End If
+                End If
+
+            End If
+
+        Next Count1
+
+        ReturnFilter = strF1
+
+    End Function
+
+
+    Function rs1Return2(tblrs1, tblrs3, rowsrs3, tblrs6, tblrsSRCC, tblrsARA, tblrsSRMatrix, DESIGNSUBJECTTAG, DESIGNSAMPLEID, MATRIX, ANALYTEID)
+
+
+        rs1Return2 = ""
+
+        Dim strF1 As String
+        Dim strF2 As String
+        Dim strF3 As String
+        Dim strF4 As String
+        Dim strF5 As String
+        Dim strF6 As String
+        Dim strF7 As String
+
+        Dim var1, var2, var3, var4, var5, var6, var7, var8, var9, var10, var11, var12, var13, var14, var15, var16, var17
+        Dim var1a, var2a, var3a, var4a, var5a, var6a
+
+        Dim vReportedConc
+        Dim boolFoundOConc As Boolean
+        Dim intRunIDO
+        Dim vConcStatus
+        Dim LLOQ
+        Dim ULOQ
+        Dim V()
+        ReDim V(10)
+        '1=vConcReported, 2=TREATMENTID,3=SPLITNUMBER , 4=USERSAMPLEID ,5=TIMETEXT, 6=WEEK, 7=ENDDAY, 8=ENDHOUR, 9=ENDMINUTE, 10=DESIGNSAMPLEID
+
+        Dim vConc
+        Dim ALIQUOTFACTOR
+        Dim int1 As Long
+        Dim int2 As Integer
+        Dim int3 As Integer
+        Dim Count1 As Integer
+        Dim Count2 As Integer
+        Dim ANALYTEINDEX
+
+        Dim ENDDAY
+        Dim ENDHOUR
+        Dim RUNID
+
+        Dim rows6() As DataRow
+
+        Dim lsigfig As Integer
+        lsigfig = 3 'get globally in StudyDoc
+
+        ALIQUOTFACTOR = 1
+
+        'previous tblrs3 item 
+        ENDDAY = rowsrs3(0).item("ENDDAY")
+        ENDHOUR = rowsrs3(0).item("ENDHOUR")
+        RUNID = rowsrs3(0).item("RUNID")
+
+
+        'load original rs3 values
+        strF1 = ReturnFilter(rowsrs3, 0, False)
+
+        V(10) = DESIGNSAMPLEID
+
+        strF2 = "SAMPLETYPEID = '" & MATRIX & "' AND DESIGNSAMPLEID = " & DESIGNSAMPLEID & " AND ANALYTEID = " & ANALYTEID
+        'If Len(ENDHOUR) = 0 Then
+        '    strF1 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND SAMPLETYPEID = '" & MATRIX & "' AND ENDDAY = " & ENDDAY
+        'Else
+        '    strF1 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND SAMPLETYPEID = '" & MATRIX & "' AND ENDDAY = " & ENDDAY & " AND ENDHOUR = " & ENDHOUR
+        'End If
+
+        'Console.WriteLine("tblrs1: " & strF2)
+
+        Dim boolIgnore As Boolean
+
+        'rs1.Filter = ""
+        'rs1.Filter = strF2
+        'int3 = rs1.RecordCount
+
+        Dim rows1() As DataRow
+        rows1 = tblrs1.select(strF2)
+        int3 = rows1.Length
+
+        If int3 = 0 Then
+
+            boolIgnore = False
+            'look in rs3 for all designsampleids
+            'then go through rs1 again
+
+            'use ANALYTEID and RUNID to get ANALYTEINDEX from rs6
+            strF4 = "ANALYTEID = " & ANALYTEID & " AND RUNID = " & RUNID
+            'rs6.Filter = ""
+            'rs6.Filter = strF4
+
+            rows6 = tblrs6.select(strF4)
+            ANALYTEINDEX = rows6(0).Item("ANALYTEINDEX")
+
+
+            strF2 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND SAMPLETYPEID = '" & MATRIX & "' AND ANALYTEINDEX = " & ANALYTEINDEX
+            'strF3 = strF2 & " AND " & strF1 & " AND ELIMINATEDFLAG <> 'Y' AND RUNANALYTEREGRESSIONSTATUS <> 4"
+            'strF3 = strF2 & " AND " & strF1 & " AND ELIMINATEDFLAG <> 'Y' AND RUNANALYTEREGRESSIONSTATUS = 3"
+            strF3 = strF2 & " AND " & strF1 & " AND ELIMINATEDFLAG <> 'Y'"
+
+            'Console.WriteLine("tblrs3: " & strF3)
+
+            'rs3.Filter = ""
+            'rs3.Filter = strF3
+            'rs3.Sort = "RUNID ASC"
+
+            Dim rows3() As DataRow
+            rows3 = tblrs3.select(strF3, "RUNID ASC")
+
+            int1 = rows3.Length
+
+            For Count1 = 1 To int1
+
+                var1 = rows3(Count1 - 1).Item("CONCENTRATION")
+                var2 = rows3(Count1 - 1).Item("ALIQUOTFACTOR")
+                ALIQUOTFACTOR = var2
+                var3 = rows3(Count1 - 1).Item("ANALYTEINDEX")
+                var4 = NZ(rows3(Count1 - 1).Item("CONCENTRATIONSTATUS"), "")
+
+                var5 = rows3(Count1 - 1).Item("RUNID")
+
+                'ensure RUNID is accepted
+                strF4 = "ANALYTEINDEX = " & var3 & " AND RUNID = " & var5
+                'rsARA.Filter = ""
+                'rsARA.Filter = strF4
+                Dim rowsARA() As DataRow
+                rowsARA = tblrsARA.select(strF4)
+                var10 = rowsARA(0).Item("RUNANALYTEREGRESSIONSTATUS")
+
+                If var10 = 3 Then 'accepted
+                Else
+                    GoTo nextCount1
+                End If
+
+                var6 = rows3(Count1 - 1).Item("DESIGNSAMPLEID")
+                var7 = rows3(Count1 - 1).Item("RUNSAMPLESEQUENCENUMBER")
+
+                var9 = rows3(Count1 - 1).Item("ELIMINATEDFLAG") 'debug
+
+
+                'load arrTP
+                For Count2 = 1 To intTPLabel
+
+                    arrTP(1, Count2) = arrTPLabel(1, Count2)
+                    arrTP(2, Count2) = NZ(rows3(Count1 - 1).Item(arrTPLabel(1, Count2)), "")
+
+                Next Count2
+
+
+                'this item must exist in rs5
+                'this item must occur in rsSRCC
+                strF1 = "ANALYTEID = " & ANALYTEID & " AND DESIGNSAMPLEID = " & var6 & " AND RUNID = " & var5 & " AND RUNSAMPLESEQUENCENUMBER = " & var7
+                'rsSRCC.Filter = ""
+                'rsSRCC.Filter = strF1
+                Dim rowsSRCC() As DataRow
+                rowsSRCC = tblrsSRCC.select(strF1)
+                int2 = rowsSRCC.Length
+
+                If int2 = 0 Then
+                Else
+
+
+                    '1=vConcReported, 2=TREATMENTID,3=SPLITNUMBER , 4=USERSAMPLEID ,5=TIMETEXT, 6=WEEK, 7=ENDDAY, 8=ENDHOUR, 9=ENDMINUTE
+                    'V(2) = NZ(rows3(count1-1).item("TREATMENTID"), "")
+                    V(2) = NZ(rows3(Count1 - 1).Item("TREATMENTEVENTID"), "")
+                    V(3) = NZ(rows3(Count1 - 1).Item("SPLITNUMBER"), "")
+                    V(4) = CStr(NZ(rows3(Count1 - 1).Item("USERSAMPLEID"), ""))
+                    V(5) = NZ(rows3(Count1 - 1).Item("TIMETEXT"), "")
+
+                    V(6) = NZ(rows3(Count1 - 1).Item("WEEK"), "")
+                    V(7) = NZ(rows3(Count1 - 1).Item("ENDDAY"), "")
+                    V(8) = NZ(rows3(Count1 - 1).Item("ENDHOUR"), "")
+                    V(10) = rows3(Count1 - 1).Item("DESIGNSAMPLEID")
+
+
+                    'get BLQ/ALQ from rs6
+                    strF5 = "ANALYTEINDEX = " & var3 & " AND RUNID = " & var5
+                    'rs6.Filter = ""
+                    'rs6.Filter = strF5
+                    rows6 = tblrs6.select(strF5)
+
+
+                    LLOQ = rows6(0).Item("NM")
+                    ULOQ = rows6(0).Item("VEC")
+                    vConcStatus = var4
+                    vConc = var1
+
+                    If IsNumeric(var1) And IsNumeric(var2) Then
+                        var8 = SigFigOrDecString(var1 / var2, lsigfig, False)
+                    End If
+
+
+                    var8 = var8
+
+                    If int1 > 1 Then
+                        'need to verify if this is the correct choice
+                        'needs to occur in sampleresults - rsRSMatrix
+                        strF6 = "SAMPLETYPEID = '" & MATRIX & "' AND DESIGNSAMPLEID = " & V(10) & " AND ANALYTEID = " & ANALYTEID
+                        'rsSRMatrix.Filter = ""
+                        'rsSRMatrix.Filter = strF6
+                        Dim rowsSRMatrix() As DataRow
+                        rowsSRMatrix = tblrsSRMatrix.select(strF6)
+
+                        If rowsSRMatrix.Length = 0 Then
+                        Else
+
+                            var8 = ""
+
+                            'check stuff
+                            Dim v1, v2, v3, v4, v5, v6
+                            v1 = NZ(rowsSRMatrix(0).Item("CONCENTRATION"), "")
+                            v2 = NZ(rowsSRMatrix(0).Item("CONCENTRATIONSTATUS"), "")
+                            v3 = NZ(rowsSRMatrix(0).Item("CALIBRATIONRANGEFLAG"), "")
+                            v4 = NZ(rowsSRMatrix(0).Item("CALIBRATIONRANGE"), "")
+                            v5 = NZ(rowsSRMatrix(0).Item("ALIQUOTFACTOR"), 1)
+
+                            vConc = v1
+                            vConcStatus = v2
+
+                            'first evaluate v2 concentrationstatus
+                            If Len(v2) > 0 Then
+                                If Len(v3) = 0 Then
+                                    vConcStatus = v2
+                                Else
+                                    vConcStatus = v3
+                                End If
+                            Else
+                                If Len(v3) = 0 Then
+                                    vConcStatus = ""
+                                Else
+                                    vConcStatus = v3
+                                End If
+                            End If
+
+                            'now evaluate vconcstatus
+                            If StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                If Len(v4) = 0 Then
+                                    'leave LLOQ as is
+                                Else
+                                    LLOQ = v4
+                                End If
+                            ElseIf StrComp(vConcStatus, "VEC", vbTextCompare) = 0 Then
+                                If Len(v4) = 0 Then
+                                    'leave uloq as is
+                                Else
+                                    ULOQ = v4
+                                End If
+                            Else
+                                'leve ULOQ and LLOQ as is
+                            End If
+
+                            'evaluate v2 and v3
+                            'if v2 has text, but v3 has none, then vconcstatus=v2, else vconcstatus=v3
+                            If Len(v2) > 0 And Len(v3) = 0 Then
+                                vConcStatus = v2
+                            ElseIf Len(v3) > 0 Then
+                                vConcStatus = v3
+                                If StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                    LLOQ = v4
+                                ElseIf StrComp(vConcStatus, "vec", vbTextCompare) = 0 Then
+                                    ULOQ = v4
+                                Else
+
+                                End If
+                            Else
+                                If StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                    LLOQ = v4
+                                ElseIf StrComp(vConcStatus, "vec", vbTextCompare) = 0 Then
+                                    ULOQ = v4
+                                Else
+                                    'vReportedConc = v2
+                                End If
+                            End If
+
+                            'now evaluate v1
+                            If Len(v1) = 0 Then
+
+                                If Len(vConcStatus) = 0 Then
+                                    If Len(v4) = 0 Then
+                                        vReportedConc = "N.R"
+                                    Else
+                                        vReportedConc = v2
+                                    End If
+                                Else
+
+                                    If StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                        vReportedConc = BQL() & "(<" & SigFigOrDecString(LLOQ / v5, lsigfig, False) & ")"
+                                    ElseIf StrComp(vConcStatus, "vec", vbTextCompare) = 0 Then
+                                        vReportedConc = AQL() & "(>" & SigFigOrDecString(ULOQ / v5, lsigfig, False) & ")"
+                                    Else
+                                        vReportedConc = vConcStatus
+                                    End If
+
+
+                                End If
+
+                            Else
+
+                                var8 = SigFigOrDecString(v1 / v5, lsigfig, False)
+
+                                If StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                                    vReportedConc = BQL() & "(<" & SigFigOrDecString(LLOQ / v5, lsigfig, False) & ")"
+                                ElseIf StrComp(vConcStatus, "vec", vbTextCompare) = 0 Then
+                                    vReportedConc = AQL() & "(>" & SigFigOrDecString(ULOQ / v5, lsigfig, False) & ")"
+                                Else
+                                    vReportedConc = var8
+                                End If
+
+                            End If
+
+                            boolIgnore = True
+
+                            Exit For
+
+                        End If
+
+                        var1 = var1
+
+                    Else
+                        Exit For
+                    End If
+
+                End If
+
+nextCount1:
+
+            Next Count1
+
+            If boolIgnore Then
+
+            Else
+
+                If Len(vConcStatus) = 0 Then
+                    If vConc < LLOQ Then
+                        vReportedConc = BQL() & "(<" & SigFigOrDecString(LLOQ / ALIQUOTFACTOR, lsigfig, False) & ")"
+                    ElseIf vConc > ULOQ Then
+                        vReportedConc = AQL() & "(<" & SigFigOrDecString(ULOQ / ALIQUOTFACTOR, lsigfig, False) & ")"
+                    Else
+                        vReportedConc = var8 ' Round(var8, "0.0")
+                    End If
+                Else
+                    If StrComp(vConcStatus, "NM", vbTextCompare) = 0 Then
+                        vReportedConc = BQL() & "(<" & SigFigOrDecString(LLOQ / ALIQUOTFACTOR, lsigfig, False) & ")"
+                    ElseIf StrComp(vConcStatus, "VEC", vbTextCompare) = 0 Then
+                        vReportedConc = AQL() & "(<" & SigFigOrDecString(ULOQ / ALIQUOTFACTOR, lsigfig, False) & ")"
+                    Else
+                        vReportedConc = var4 ' Round(var8, "0.0")
+                    End If
+                End If
+
+            End If
+
+        Else
+
+            var1 = rows1(0).Item("CONCENTRATION")
+            var2 = rows1(0).Item("ALIQUOTFACTOR")
+            var4 = NZ(rows1(0).Item("CONCENTRATIONSTATUS"), "")
+            var5 = NZ(rows1(0).Item("CALIBRATIONRANGE"), "")
+            var6 = NZ(rows1(0).Item("CALIBRATIONRANGEFLAG"), "")
+            var7 = NZ(rows1(0).Item("RUNID"), 0)
+
+            Dim boolNoRunID As Boolean = False
+            If var7 = 0 Then
+                boolNoRunID = True
+            End If
+
+            '1=vConcReported, 2=TREATMENTID,3=SPLITNUMBER , 4=USERSAMPLEID ,5=TIMETEXT, 6=WEEK, 7=ENDDAY, 8=ENDHOUR, 9=ENDMINUTE
+
+            'V(2) = NZ(rows1(0).item("TREATMENTID"), "")
+            V(2) = NZ(rows1(0).Item("TREATMENTEVENTID"), "")
+            V(3) = NZ(rows1(0).Item("SPLITNUMBER"), "")
+            V(4) = CStr(NZ(rows1(0).Item("USERSAMPLEID"), ""))
+            V(5) = NZ(rows1(0).Item("TIMETEXT"), "")
+
+            V(6) = NZ(rows1(0).Item("WEEK"), "")
+            V(7) = NZ(rows1(0).Item("ENDDAY"), "")
+            V(8) = NZ(rows1(0).Item("ENDHOUR"), "")
+            V(10) = NZ(rows1(0).Item("DESIGNSAMPLEID"), "")
+
+            If IsNumeric(var1) And IsNumeric(var2) Then
+                var8 = SigFigOrDecString(var1 / var2, lsigfig, False)
+            End If
+
+            'get BLQ/ALQ from rs6
+            'strF2 = "ANALYTEINDEX = " & var3 & " AND RUNID = " & var5
+            'Note: This is Reported Concentration
+            'This record may have no RUNID
+            strF3 = "RUNID = " & var7 & " AND ANALYTEID = " & ANALYTEID
+            'rs6.Filter = ""
+            'rs6.Filter = strF3
+            rows6 = tblrs6.select(strF3)
+            If rows6.Length = 0 Then
+            Else
+                LLOQ = rows6(0).Item("NM")
+                ULOQ = rows6(0).Item("VEC")
+            End If
+
+            'vReportedConc = AQL() & "(<" & SigFigOrDecString(ULOQ / ALIQUOTFACTOR, lsigfig, False) & ")"
+
+            If Len(var4) = 0 Then
+                If boolNoRunID Then
+                    vReportedConc = var8
+                Else
+                    If var1 < LLOQ Then
+                        vReportedConc = BQL() & "(<" & SigFigOrDecString(LLOQ / var2, lsigfig, False) & ")"
+                    ElseIf var1 > ULOQ Then
+                        vReportedConc = AQL() & "(<" & SigFigOrDecString(ULOQ / var2, lsigfig, False) & ")"
+                    Else
+                        vReportedConc = var8 ' Round(var8, "0.0")
+                    End If
+                End If
+             
+            Else
+                If StrComp(var4, "NM", vbTextCompare) = 0 Then
+                    vReportedConc = BQL() & "(<" & SigFigOrDecString(LLOQ / var2, lsigfig, False) & ")"
+                ElseIf StrComp(var4, "VEC", vbTextCompare) = 0 Then
+                    vReportedConc = AQL() & "(<" & SigFigOrDecString(ULOQ / var2, lsigfig, False) & ")"
+                Else
+                    vReportedConc = var4 ' Round(var8, "0.0")
+                End If
+
+            End If
+
+        End If
+
+end1:
+
+        V(1) = vReportedConc
+
+        rs1Return2 = V
+
+    End Function
+
+
+    Function rs3Return1(tblROWS3, tblrs6, tblrsARA, ANALYTEID, ANALYTEINDEX, DESIGNSAMPLEID, boolOrig, strF2, RUNID, ORIGINALVALUE)
+
+        Dim V()
+        ReDim V(20)
+        '1=intRunIDO, 2=vConcStatus, 3=boolFoundOConc, 4=vConc, 5=LLOQ, 6=ULOQ, 7=AliquotFactor, 8=nConc, 9=RUNSAMPLESEQUENCENUMBER, 10=SPLITNUMBER, 11=WEEK, 12=DESIGNSUBJECTTAG, 13=TREATMENTID
+
+        'Dim strF2 As String
+        Dim var1, var2, var3, var4, var5, var6, var7, var8, var9, var10, var11, var12, var13, var14, var15, var16, var17
+        Dim var1a, var2a, var3a, var4a, var5a, var6a
+
+        Dim vConc
+        Dim boolFoundOConc As Boolean
+        Dim intRunIDO
+        Dim vConcStatus
+        Dim LLOQ
+        Dim ULOQ
+        Dim ALIQUOTFACTOR As Single
+        Dim int1 As Long
+        Dim Count1 As Integer
+        Dim Count2 As Integer
+        Dim strF1 As String
+        Dim strF3 As String
+        Dim strF4 As String
+
+        Dim lsigfig As Integer
+        lsigfig = 3 'get this globally in StudyDoc
+
+        LLOQ = ""
+        ULOQ = ""
+        ALIQUOTFACTOR = 1
+
+        boolFoundOConc = False
+
+        'var1 = NZ(ENDHOUR, "")
+        'If Len(var1) = 0 Then
+        '    strF2 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND SAMPLETYPEID = '" & MATRIX & "' AND ENDDAY = " & ENDDAY
+        'Else
+        '    strF2 = "DESIGNSUBJECTTAG = '" & DESIGNSUBJECTTAG & "' AND SAMPLETYPEID = '" & MATRIX & "' AND ENDDAY = " & ENDDAY & " AND ENDHOUR = " & ENDHOUR
+        'End If
+
+        'Debug.Print strF2
+        Dim rows3() As DataRow
+
+        'ROWS3.Filter = ""
+        'ROWS3.Filter = strF2
+        ''sort by runid asc
+        'ROWS3.Sort = "RUNID ASC"
+        rows3 = tblROWS3.select(strF2, "RUNID ASC")
+        int1 = rows3.Length
+
+        If int1 = 0 Then
+
+        Else
+
+            '1st entry will be original concentration if vConcO (boolOrig=true) is wanted
+
+            For Count1 = 1 To int1
+
+                var1 = rows3(Count1 - 1).Item("CONCENTRATION")
+                V(8) = var1
+
+                var2 = rows3(Count1 - 1).Item("ALIQUOTFACTOR")
+                var3 = rows3(Count1 - 1).Item("ANALYTEINDEX")
+                var4 = NZ(rows3(Count1 - 1).Item("CONCENTRATIONSTATUS"), "")
+                var5 = NZ(rows3(Count1 - 1).Item("USERSAMPLEID"), "")
+                var6 = NZ(rows3(Count1 - 1).Item("RUNSAMPLESEQUENCENUMBER"), "")
+                V(9) = var6
+                var7 = NZ(rows3(Count1 - 1).Item("SPLITNUMBER"), "")
+                V(10) = var7
+                var9 = NZ(rows3(Count1 - 1).Item("WEEK"), "")
+                V(11) = var9
+                var10 = rows3(Count1 - 1).Item("DESIGNSAMPLEID")
+                var11 = rows3(Count1 - 1).Item("DESIGNSUBJECTTAG")
+                V(12) = var11
+                'var12 = ROWS3(COUNT1-1).ITEM("TREATMENTID")
+                var12 = rows3(Count1 - 1).Item("TREATMENTEVENTID")
+                V(13) = var12
+
+                'custom id must match
+                'works for POP01
+                '        'doesn't work for 01045005
+                '        If StrComp(var5, USERSAMPLEID, vbTextCompare) = 0 Then
+                '        Else
+                '            GoTo nextCount1
+                '        End If
+
+                ALIQUOTFACTOR = NZ(rows3(Count1 - 1).Item("ALIQUOTFACTOR"), 1)
+                var13 = rows3(Count1 - 1).Item("RUNID")
+
+
+                'ensure RUNID is accepted
+                strF4 = "ANALYTEINDEX = " & var3 & " AND RUNID = " & var13
+                'rsARA.Filter = ""
+                'rsARA.Filter = strF4
+
+                Dim rowsARA() As DataRow
+                rowsARA = tblrsARA.select(strF4)
+
+                If rowsARA.Length = 0 Then
+                    GoTo nextCount1
+                Else
+                    'var10 = rsARA.Fields("RUNANALYTEREGRESSIONSTATUS").Value
+                    var10 = rowsARA(0).Item("RUNANALYTEREGRESSIONSTATUS")
+
+                    If var10 = 3 Then 'accepted
+                    Else
+                        GoTo nextCount1
+                        '
+                        '                'need better logic
+                        '                'some people will report this as original conc even if run is rejected
+                        '                If StrComp(ORIGINALVALUE, "Y", vbTextCompare) = 0 And boolOrig Then
+                        '                Else
+                        '                    GoTo nextCount1
+                        '                End If
+
+                    End If
+                End If
+
+                intRunIDO = rows3(Count1 - 1).Item("RUNID")
+
+                vConcStatus = var4
+                V(1) = intRunIDO
+                V(2) = vConcStatus
+                V(7) = ALIQUOTFACTOR
+
+                var5 = rows3(Count1 - 1).Item("RUNID")
+                'get BLQ/ALQ from rs6
+                'strF2 = "ANALYTEINDEX = " & var3 & " AND RUNID = " & var5 & " AND ANALYTEID = " & ANALYTEID
+                strF1 = "RUNID = " & var5 & " AND ANALYTEID = " & ANALYTEID
+                'rs6.Filter = ""
+                'rs6.Filter = strF1
+                Dim rows6() As DataRow
+                rows6 = tblrs6.select(strF1)
+
+                LLOQ = rows6(0).Item("NM")
+                ULOQ = rows6(0).Item("VEC")
+
+                V(5) = LLOQ
+                V(6) = ULOQ
+
+                If IsNumeric(var1) And IsNumeric(var2) Then
+                    var8 = SigFigOrDecString(var1 / var2, lsigfig, False)
+                End If
+
+                '& SigFigOrDecString(LLOQ / v5, lsigfig, False) &
+
+                If Len(var4) = 0 Then
+                    If var1 < LLOQ Then
+                        vConc = BQL() & "(<" & SigFigOrDecString(LLOQ / var2, lsigfig, False) & ")"
+                    ElseIf var1 > ULOQ Then
+                        vConc = AQL() & "(>" & SigFigOrDecString(ULOQ / var2, lsigfig, False) & ")"
+                    Else
+                        vConc = var8 ' Round(var8, "0.0")
+                    End If
+                Else
+                    If StrComp(var4, "NM", vbTextCompare) = 0 Then
+                        vConc = BQL() & "(<" & SigFigOrDecString(LLOQ / var2, lsigfig, False) & ")"
+                    ElseIf StrComp(var4, "VEC", vbTextCompare) = 0 Then
+                        vConc = AQL() & "(>" & SigFigOrDecString(ULOQ / var2, lsigfig, False) & ")"
+                    Else
+                        vConc = var4 ' Round(var8, "0.0")
+                    End If
+                End If
+
+                V(4) = vConc
+
+                boolFoundOConc = True
+
+                If boolOrig Then
+                    Exit For
+                End If
+
+nextCount1:
+
+
+            Next Count1
+
+
+
+        End If
+
+        V(3) = boolFoundOConc
+        rs3Return1 = V
+
+    End Function
+
+
+End Module
